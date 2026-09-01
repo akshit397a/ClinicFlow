@@ -1,6 +1,6 @@
 import { addHours } from 'date-fns';
 import type { AppointmentListItem, AppointmentStatus } from '@/lib/db/types';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { prisma } from '@/lib/prisma';
 
 const ALERT_WINDOW_HOURS = 24;
 const REAPPEAR_HOURS = 1;
@@ -11,17 +11,6 @@ export interface AlertCandidate {
   alert_dismissed_at: string | null;
 }
 
-/**
- * The unconfirmed-appointment alert rule, derived purely from time:
- *
- *   status = requested
- *   AND scheduled time is in the future
- *   AND within the next 24 hours
- *   AND NOT dismissed  -- unless the appointment is within 1 hour of its start,
- *                        in which case it reappears regardless of dismissal.
- *
- * Time-derived on purpose: no background job resets a dismissal flag.
- */
 export function isUnconfirmedAlert(
   candidate: AlertCandidate,
   now: Date = new Date(),
@@ -41,46 +30,85 @@ export function isUnconfirmedAlert(
 }
 
 export async function getUnconfirmedAlerts(): Promise<AppointmentListItem[]> {
-  const supabase = await createServerSupabaseClient();
   const now = new Date();
+  const maxTime = addHours(now, ALERT_WINDOW_HOURS);
+  const reappearThreshold = addHours(now, REAPPEAR_HOURS);
 
-  const { data, error } = await supabase
-    .from('appointments')
-    .select(
-      '*, patient:patients!appointments_patient_id_fkey(*), provider:profiles!appointments_provider_id_fkey(*)',
-    )
-    .eq('status', 'requested')
-    .gt('scheduled_start', now.toISOString())
-    .lte('scheduled_start', addHours(now, ALERT_WINDOW_HOURS).toISOString())
-    .or(
-      `alert_dismissed_at.is.null,scheduled_start.lte.${addHours(now, REAPPEAR_HOURS).toISOString()}`,
-    )
-    .order('scheduled_start', { ascending: true });
+  const rows = await prisma.appointment.findMany({
+    where: {
+      status: 'requested',
+      scheduledStart: {
+        gt: now,
+        lte: maxTime,
+      },
+      archivedAt: null,
+      OR: [
+        { alertDismissedAt: null },
+        { scheduledStart: { lte: reappearThreshold } },
+      ],
+    },
+    include: {
+      patient: true,
+      provider: true,
+    },
+    orderBy: {
+      scheduledStart: 'asc',
+    },
+  });
 
-  if (error) {
-    throw new Error(`Failed to load alerts: ${error.message}`);
-  }
-
-  return (data ?? []) as AppointmentListItem[];
+  return rows.map((r) => ({
+    id: r.id,
+    provider_id: r.providerId,
+    patient_id: r.patientId,
+    scheduled_start: r.scheduledStart.toISOString(),
+    duration_minutes: r.durationMinutes,
+    status: r.status as any,
+    cancellation_reason: r.cancellationReason,
+    archived_at: r.archivedAt ? r.archivedAt.toISOString() : null,
+    archived_by: r.archivedById,
+    alert_dismissed_at: r.alertDismissedAt ? r.alertDismissedAt.toISOString() : null,
+    alert_dismissed_by: r.alertDismissedById,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+    patient: r.patient
+      ? {
+          id: r.patient.id,
+          full_name: r.patient.fullName,
+          email: r.patient.email,
+          phone: r.patient.phone,
+          date_of_birth: r.patient.dateOfBirth ? r.patient.dateOfBirth.toISOString().split('T')[0] : null,
+          created_at: r.patient.createdAt.toISOString(),
+          updated_at: r.patient.updatedAt.toISOString(),
+        }
+      : null,
+    provider: {
+      id: r.provider.id,
+      email: r.provider.email,
+      full_name: r.provider.fullName,
+      role: r.provider.role as any,
+      created_at: r.provider.createdAt.toISOString(),
+      updated_at: r.provider.updatedAt.toISOString(),
+    },
+  }));
 }
 
 export async function countUnconfirmedAlerts(): Promise<number> {
-  const supabase = await createServerSupabaseClient();
   const now = new Date();
+  const maxTime = addHours(now, ALERT_WINDOW_HOURS);
+  const reappearThreshold = addHours(now, REAPPEAR_HOURS);
 
-  const { count, error } = await supabase
-    .from('appointments')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'requested')
-    .gt('scheduled_start', now.toISOString())
-    .lte('scheduled_start', addHours(now, ALERT_WINDOW_HOURS).toISOString())
-    .or(
-      `alert_dismissed_at.is.null,scheduled_start.lte.${addHours(now, REAPPEAR_HOURS).toISOString()}`,
-    );
-
-  if (error) {
-    throw new Error(`Failed to count alerts: ${error.message}`);
-  }
-
-  return count ?? 0;
+  return prisma.appointment.count({
+    where: {
+      status: 'requested',
+      scheduledStart: {
+        gt: now,
+        lte: maxTime,
+      },
+      archivedAt: null,
+      OR: [
+        { alertDismissedAt: null },
+        { scheduledStart: { lte: reappearThreshold } },
+      ],
+    },
+  });
 }

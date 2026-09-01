@@ -2,14 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth/require-auth';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/prisma';
 import { toErrorMessage } from '@/lib/utils/errors';
 import { fail, ok, type ActionResult } from '@/lib/utils/result';
-import type { AppointmentStatus } from '@/lib/db/types';
 import type { AppointmentForPermission } from '@/lib/appointments/permissions';
 import {
   canAddNote,
-  canArchiveSlot,
   canAssignSupportingProvider,
   canBookSlot,
   canCancel,
@@ -56,24 +54,26 @@ interface AppointmentRow extends AppointmentForPermission {
   id: string;
 }
 
-/** Fetch the row needed for authorization + validation of one mutation. */
 async function getAppointmentForAction(id: string): Promise<AppointmentRow | null> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('appointments')
-    .select('id, provider_id, patient_id, status')
-    .eq('id', id)
-    .maybeSingle();
-  return (data as AppointmentRow | null) ?? null;
+  const row = await prisma.appointment.findUnique({
+    where: { id },
+    select: { id: true, providerId: true, patientId: true, status: true },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    provider_id: row.providerId,
+    patient_id: row.patientId,
+    status: row.status as any,
+  };
 }
 
 async function getSupportingProviderIds(appointmentId: string): Promise<string[]> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('appointment_supporting_providers')
-    .select('provider_id')
-    .eq('appointment_id', appointmentId);
-  return (data ?? []).map((row) => (row as { provider_id: string }).provider_id);
+  const rows = await prisma.appointmentSupportingProvider.findMany({
+    where: { appointmentId },
+    select: { providerId: true },
+  });
+  return rows.map((r) => r.providerId);
 }
 
 function refreshRelevantPaths(appointmentId: string): void {
@@ -98,29 +98,27 @@ export async function bookSlotAction(input: BookSlotInput): Promise<ActionResult
   const bookingCheck = validateBooking(appointment);
   if (!bookingCheck.ok) return bookingCheck;
 
-  const admin = createAdminClient();
-  const { data: patient } = await admin
-    .from('patients')
-    .select('id')
-    .eq('id', patientId)
-    .maybeSingle();
-  if (!patient) return fail('Patient not found.');
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        patientId,
+        status: 'confirmed',
+      },
+    });
 
-  const { error } = await admin
-    .from('appointments')
-    .update({ patient_id: patientId, status: 'requested' })
-    .eq('id', appointmentId);
-  if (error) return fail(toErrorMessage(error));
+    await recordStatusChanged({
+      appointmentId,
+      actorId: user.id,
+      oldStatus: null,
+      newStatus: 'confirmed',
+    });
 
-  await recordStatusChanged({
-    appointmentId,
-    actorId: user.id,
-    oldStatus: null,
-    newStatus: 'requested',
-    metadata: { patientId },
-  });
-  refreshRelevantPaths(appointmentId);
-  return ok();
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
 }
 
 export async function transitionStatusAction(
@@ -128,33 +126,39 @@ export async function transitionStatusAction(
 ): Promise<ActionResult> {
   const user = await requireAuth();
   const parsed = transitionStatusSchema.safeParse(input);
-  if (!parsed.success) return fail('Invalid status transition.');
+  if (!parsed.success) return fail('Invalid status change details.');
 
   const { appointmentId, toStatus } = parsed.data;
   const appointment = await getAppointmentForAction(appointmentId);
   if (!appointment) return fail('Appointment not found.');
 
-  const transitionCheck = validateTransition(appointment.status, toStatus);
-  if (!transitionCheck.ok) return transitionCheck;
   if (!canTransitionStatus(user.profile, appointment)) {
-    return fail('Not authorized to change this appointment.');
+    return fail('Not authorized to change appointment status.');
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from('appointments')
-    .update({ status: toStatus })
-    .eq('id', appointmentId);
-  if (error) return fail(toErrorMessage(error));
+  const transitionCheck = validateTransition(appointment.status, toStatus);
+  if (!transitionCheck.ok) return transitionCheck;
 
-  await recordStatusChanged({
-    appointmentId,
-    actorId: user.id,
-    oldStatus: appointment.status,
-    newStatus: toStatus,
-  });
-  refreshRelevantPaths(appointmentId);
-  return ok();
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        status: toStatus,
+      },
+    });
+
+    await recordStatusChanged({
+      appointmentId,
+      actorId: user.id,
+      oldStatus: appointment.status,
+      newStatus: toStatus,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
 }
 
 export async function cancelAppointmentAction(
@@ -162,114 +166,76 @@ export async function cancelAppointmentAction(
 ): Promise<ActionResult> {
   const user = await requireAuth();
   const parsed = cancelAppointmentSchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? 'Invalid cancellation.');
+  if (!parsed.success) return fail('Invalid cancellation details.');
 
   const { appointmentId, reason } = parsed.data;
   const appointment = await getAppointmentForAction(appointmentId);
   if (!appointment) return fail('Appointment not found.');
-  if (!canCancel(user.profile, appointment)) return fail('Not authorized to cancel this appointment.');
+
+  if (!canCancel(user.profile, appointment)) {
+    return fail('Not authorized to cancel appointments.');
+  }
 
   const cancelCheck = validateCancellation(appointment);
   if (!cancelCheck.ok) return cancelCheck;
 
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from('appointments')
-    .update({ status: 'cancelled', cancellation_reason: reason })
-    .eq('id', appointmentId);
-  if (error) return fail(toErrorMessage(error));
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        status: 'cancelled',
+        cancellationReason: reason,
+      },
+    });
 
-  await recordCancelled({
-    appointmentId,
-    actorId: user.id,
-    oldStatus: appointment.status as AppointmentStatus,
-    cancellationReason: reason,
-  });
-  refreshRelevantPaths(appointmentId);
-  return ok();
-}
+    await recordCancelled({
+      appointmentId,
+      actorId: user.id,
+      oldStatus: appointment.status!,
+      cancellationReason: reason,
+    });
 
-export async function dismissAlertAction(input: DismissAlertInput): Promise<ActionResult> {
-  const user = await requireAuth();
-  const parsed = dismissAlertSchema.safeParse(input);
-  if (!parsed.success) return fail('Invalid alert.');
-
-  const { appointmentId } = parsed.data;
-  const appointment = await getAppointmentForAction(appointmentId);
-  if (!appointment) return fail('Appointment not found.');
-  if (!canDismissAlert(user.profile)) return fail('Not authorized to dismiss alerts.');
-
-  const dismissalCheck = validateDismissal(appointment);
-  if (!dismissalCheck.ok) return dismissalCheck;
-
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from('appointments')
-    .update({ alert_dismissed_at: new Date().toISOString(), alert_dismissed_by: user.id })
-    .eq('id', appointmentId);
-  if (error) return fail(toErrorMessage(error));
-
-  // Deliberately not audited: alert dismissal is a UI state, not a lifecycle event.
-  refreshRelevantPaths(appointmentId);
-  return ok();
-}
-
-export async function archiveSlotAction(input: ArchiveSlotInput): Promise<ActionResult> {
-  const user = await requireAuth();
-  const parsed = archiveSlotSchema.safeParse(input);
-  if (!parsed.success) return fail('Invalid slot.');
-
-  const { appointmentId } = parsed.data;
-  const appointment = await getAppointmentForAction(appointmentId);
-  if (!appointment) return fail('Slot not found.');
-  if (!canManageAvailability(user.profile, appointment)) {
-    return fail('Not authorized to archive this slot.');
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
   }
-
-  const archiveCheck = validateSlotArchive(appointment);
-  if (!archiveCheck.ok) return archiveCheck;
-
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from('appointments')
-    .update({ archived_at: new Date().toISOString(), archived_by: user.id })
-    .eq('id', appointmentId);
-  if (error) return fail(toErrorMessage(error));
-
-  await recordSlotArchived({ appointmentId, actorId: user.id });
-  refreshRelevantPaths(appointmentId);
-  return ok();
 }
 
 export async function addNoteAction(input: AddNoteInput): Promise<ActionResult> {
   const user = await requireAuth();
   const parsed = addNoteSchema.safeParse(input);
-  if (!parsed.success) return fail('Please enter note content.');
+  if (!parsed.success) return fail('Invalid note details.');
 
   const { appointmentId, content } = parsed.data;
   const appointment = await getAppointmentForAction(appointmentId);
   if (!appointment) return fail('Appointment not found.');
 
-  const supportingProviderIds = await getSupportingProviderIds(appointmentId);
-  if (!canAddNote(user.profile, appointment, supportingProviderIds)) {
-    return fail('Only the primary or a supporting provider can add visit notes.');
+  const supporting = await getSupportingProviderIds(appointmentId);
+  if (!canAddNote(user.profile, appointment, supporting)) {
+    return fail('Only assigned providers can add notes.');
   }
 
-  const admin = createAdminClient();
-  const { data: inserted, error } = await admin
-    .from('visit_notes')
-    .insert({
-      appointment_id: appointmentId,
-      author_provider_id: user.id,
-      content,
-    })
-    .select('id')
-    .single();
-  if (error) return fail(toErrorMessage(error));
+  try {
+    const note = await prisma.visitNote.create({
+      data: {
+        appointmentId,
+        authorProviderId: user.id,
+        content: content.trim(),
+      },
+    });
 
-  await recordNoteAdded({ appointmentId, actorId: user.id, noteId: inserted.id });
-  refreshRelevantPaths(appointmentId);
-  return ok();
+    await recordNoteAdded({
+      appointmentId,
+      actorId: user.id,
+      noteId: note.id,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
 }
 
 export async function assignSupportingProviderAction(
@@ -277,41 +243,40 @@ export async function assignSupportingProviderAction(
 ): Promise<ActionResult> {
   const user = await requireAuth();
   const parsed = assignSupportingProviderSchema.safeParse(input);
-  if (!parsed.success) return fail('Invalid provider assignment.');
+  if (!parsed.success) return fail('Invalid assignment details.');
 
   const { appointmentId, providerId } = parsed.data;
   const appointment = await getAppointmentForAction(appointmentId);
   if (!appointment) return fail('Appointment not found.');
+
   if (!canAssignSupportingProvider(user.profile)) {
-    return fail('Only front-desk staff can assign supporting providers.');
-  }
-  if (providerId === appointment.provider_id) {
-    return fail('This provider is already the primary provider for the appointment.');
+    return fail('Not authorized to assign supporting providers.');
   }
 
-  const admin = createAdminClient();
-  const { data: provider } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('id', providerId)
-    .eq('role', 'provider')
-    .maybeSingle();
-  if (!provider) return fail('Provider not found.');
+  if (appointment.provider_id === providerId) {
+    return fail('Provider is already the primary on this appointment.');
+  }
 
-  const { error } = await admin.from('appointment_supporting_providers').insert({
-    appointment_id: appointmentId,
-    provider_id: providerId,
-    assigned_by: user.id,
-  });
-  if (error) return fail(toErrorMessage(error));
+  try {
+    await prisma.appointmentSupportingProvider.create({
+      data: {
+        appointmentId,
+        providerId,
+        assignedById: user.id,
+      },
+    });
 
-  await recordSupportingProviderAdded({
-    appointmentId,
-    actorId: user.id,
-    providerId,
-  });
-  refreshRelevantPaths(appointmentId);
-  return ok();
+    await recordSupportingProviderAdded({
+      appointmentId,
+      actorId: user.id,
+      providerId,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
 }
 
 export async function removeSupportingProviderAction(
@@ -319,29 +284,106 @@ export async function removeSupportingProviderAction(
 ): Promise<ActionResult> {
   const user = await requireAuth();
   const parsed = removeSupportingProviderSchema.safeParse(input);
-  if (!parsed.success) return fail('Invalid provider assignment.');
+  if (!parsed.success) return fail('Invalid removal details.');
 
   const { appointmentId, providerId } = parsed.data;
   const appointment = await getAppointmentForAction(appointmentId);
   if (!appointment) return fail('Appointment not found.');
+
   if (!canRemoveSupportingProvider(user.profile)) {
-    return fail('Only front-desk staff can remove supporting providers.');
+    return fail('Not authorized to remove supporting providers.');
   }
 
-  const admin = createAdminClient();
-  const { error, count } = await admin
-    .from('appointment_supporting_providers')
-    .delete({ count: 'exact' })
-    .eq('appointment_id', appointmentId)
-    .eq('provider_id', providerId);
-  if (error) return fail(toErrorMessage(error));
-  if (count === 0) return fail('That provider is not assigned to this appointment.');
+  try {
+    await prisma.appointmentSupportingProvider.deleteMany({
+      where: {
+        appointmentId,
+        providerId,
+      },
+    });
 
-  await recordSupportingProviderRemoved({
-    appointmentId,
-    actorId: user.id,
-    providerId,
-  });
-  refreshRelevantPaths(appointmentId);
-  return ok();
+    await recordSupportingProviderRemoved({
+      appointmentId,
+      actorId: user.id,
+      providerId,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
+}
+
+export async function dismissAlertAction(
+  input: DismissAlertInput,
+): Promise<ActionResult> {
+  const user = await requireAuth();
+  const parsed = dismissAlertSchema.safeParse(input);
+  if (!parsed.success) return fail('Invalid alert details.');
+
+  const { appointmentId } = parsed.data;
+  const appointment = await getAppointmentForAction(appointmentId);
+  if (!appointment) return fail('Appointment not found.');
+
+  if (!canDismissAlert(user.profile)) {
+    return fail('Not authorized to dismiss alerts.');
+  }
+
+  const dismissalCheck = validateDismissal(appointment);
+  if (!dismissalCheck.ok) return dismissalCheck;
+
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        alertDismissedAt: new Date(),
+        alertDismissedById: user.id,
+      },
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
+}
+
+export async function archiveSlotAction(
+  input: ArchiveSlotInput,
+): Promise<ActionResult> {
+  const user = await requireAuth();
+  const parsed = archiveSlotSchema.safeParse(input);
+  if (!parsed.success) return fail('Invalid slot details.');
+
+  const { appointmentId } = parsed.data;
+  const appointment = await getAppointmentForAction(appointmentId);
+  if (!appointment) return fail('Slot not found.');
+
+  if (!canManageAvailability(user.profile, appointment)) {
+    return fail('Not authorized to manage this schedule.');
+  }
+
+  const archiveCheck = validateSlotArchive(appointment);
+  if (!archiveCheck.ok) return archiveCheck;
+
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        archivedAt: new Date(),
+        archivedById: user.id,
+      },
+    });
+
+    await recordSlotArchived({
+      appointmentId,
+      actorId: user.id,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
 }

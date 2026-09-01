@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth/require-auth';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/prisma';
 import { toErrorMessage } from '@/lib/utils/errors';
 import { fail, ok, type ActionResult } from '@/lib/utils/result';
 import { patientSchema, updatePatientSchema, type PatientInput } from '@/lib/validation/schemas';
@@ -15,18 +15,22 @@ export async function createPatientAction(input: PatientInput): Promise<ActionRe
   const parsed = patientSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? 'Invalid patient details.');
 
-  const admin = createAdminClient();
-  const { error } = await admin.from('patients').insert({
-    full_name: parsed.data.fullName,
-    email: parsed.data.email ?? null,
-    phone: parsed.data.phone ?? null,
-    date_of_birth: parsed.data.dateOfBirth ? parsed.data.dateOfBirth.toISOString().slice(0, 10) : null,
-  });
-  if (error) return fail(toErrorMessage(error));
+  try {
+    await prisma.patient.create({
+      data: {
+        fullName: parsed.data.fullName,
+        email: parsed.data.email ?? null,
+        phone: parsed.data.phone ?? null,
+        dateOfBirth: parsed.data.dateOfBirth ?? null,
+      },
+    });
 
-  revalidatePath('/');
-  revalidatePath('/patients');
-  return ok();
+    revalidatePath('/');
+    revalidatePath('/patients');
+    return ok();
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
 }
 
 export async function updatePatientAction(
@@ -40,27 +44,27 @@ export async function updatePatientAction(
 
   const { patientId, ...fields } = parsed.data;
 
-  const admin = createAdminClient();
-  const { data: existing } = await admin
-    .from('patients')
-    .select('id')
-    .eq('id', patientId)
-    .maybeSingle();
-  if (!existing) return fail('Patient not found.');
+  try {
+    const existing = await prisma.patient.findUnique({
+      where: { id: patientId },
+    });
+    if (!existing) return fail('Patient not found.');
 
-  const { error } = await admin
-    .from('patients')
-    .update({
-      full_name: fields.fullName,
-      email: fields.email ?? null,
-      phone: fields.phone ?? null,
-      date_of_birth: fields.dateOfBirth ? fields.dateOfBirth.toISOString().slice(0, 10) : null,
-    })
-    .eq('id', patientId);
-  if (error) return fail(toErrorMessage(error));
+    await prisma.patient.update({
+      where: { id: patientId },
+      data: {
+        fullName: fields.fullName,
+        email: fields.email ?? null,
+        phone: fields.phone ?? null,
+        dateOfBirth: fields.dateOfBirth ?? null,
+      },
+    });
 
-  revalidatePath('/');
-  revalidatePath('/patients');
-  revalidatePath(`/patients/${patientId}`);
-  return ok();
+    revalidatePath('/');
+    revalidatePath('/patients');
+    revalidatePath(`/patients/${patientId}`);
+    return ok();
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
 }

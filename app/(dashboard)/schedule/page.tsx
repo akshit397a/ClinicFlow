@@ -4,7 +4,7 @@ import { getDaySchedule } from '@/lib/appointments/queries';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DaySchedule } from '@/components/schedule/DaySchedule';
 import { BulkAvailabilityForm } from '@/components/schedule/BulkAvailabilityForm';
-import { Input, Label, Select } from '@/components/ui/fields';
+import { Label, Select } from '@/components/ui/fields';
 import { formatDate } from '@/lib/utils/dates';
 
 type Props = {
@@ -30,21 +30,26 @@ export default async function SchedulePage({ searchParams }: Props) {
       : providers[0]?.id ?? '';
   const providerId = single(raw.provider_id) ?? defaultProviderId;
 
-  const rows = providerId
-    ? await getDaySchedule(providerId, date)
-    : [];
+  const rows = providerId ? await getDaySchedule(providerId, date) : [];
+
+  const selectedProvider = providers.find((p) => p.id === providerId);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-xl font-semibold">Schedule</h1>
+    <div className="space-y-6">
+      {/* Page header */}
+      <div>
+        <h1 className="text-2xl font-bold text-[#111111] tracking-tight">Schedule</h1>
+        <p className="mt-1 text-sm text-[#6b7280]">View and manage provider day schedules</p>
+      </div>
 
+      {/* Day picker */}
       <Card>
         <CardHeader>
-          <CardTitle>View a day</CardTitle>
+          <CardTitle>Select day &amp; provider</CardTitle>
         </CardHeader>
         <CardBody>
-          <form method="get" className="grid grid-cols-2 items-end gap-3 md:grid-cols-3">
-            <div>
+          <form method="get" className="flex flex-wrap items-end gap-4">
+            <div className="min-w-40 flex-1">
               <Label htmlFor="provider_id">Provider</Label>
               <Select id="provider_id" name="provider_id" defaultValue={providerId}>
                 {providers.map((p) => (
@@ -54,42 +59,58 @@ export default async function SchedulePage({ searchParams }: Props) {
                 ))}
               </Select>
             </div>
-            <div>
+            <div className="min-w-40 flex-1">
               <Label htmlFor="date">Date</Label>
-              <Input id="date" name="date" type="date" defaultValue={selectedDate} />
+              <input
+                id="date"
+                name="date"
+                type="date"
+                defaultValue={selectedDate}
+                className="w-full rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#111111] outline-none focus:border-[#111111] focus:ring-2 focus:ring-[#111111]/10 transition-all"
+              />
             </div>
-            <div>
-              <button
-                type="submit"
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                Show day
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="rounded-lg bg-[#111111] px-4 py-2 text-sm font-medium text-white hover:bg-[#242424] transition-colors"
+            >
+              View day
+            </button>
           </form>
         </CardBody>
       </Card>
 
+      {/* Day schedule */}
       <Card>
         <CardHeader>
           <CardTitle>
-            {formatDate(date)} —{' '}
-            {providers.find((p) => p.id === providerId)?.full_name ?? 'Provider'}
+            {formatDate(date)}
           </CardTitle>
+          {selectedProvider && (
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-xs font-semibold text-violet-700">
+                {selectedProvider.full_name[0]}
+              </div>
+              <span className="text-sm font-medium text-[#374151]">{selectedProvider.full_name}</span>
+            </div>
+          )}
         </CardHeader>
-        <CardBody>
+        <CardBody className="p-0">
           <DaySchedule rows={rows} providerId={providerId} date={date} />
         </CardBody>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Bulk availability generation</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <BulkAvailabilityForm providers={providers} defaultProviderId={defaultProviderId} />
-        </CardBody>
-      </Card>
+      {/* Bulk availability */}
+      {user.profile.role === 'front_desk' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Generate availability slots</CardTitle>
+            <span className="text-xs text-[#9ca3af]">Bulk create open slots for a provider</span>
+          </CardHeader>
+          <CardBody>
+            <BulkAvailabilityForm providers={providers} defaultProviderId={defaultProviderId} />
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

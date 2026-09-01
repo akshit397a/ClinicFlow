@@ -1,11 +1,8 @@
 import { addDays, startOfWeek } from 'date-fns';
 import type { AppointmentListItem } from '@/lib/db/types';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { prisma } from '@/lib/prisma';
 import { countUnconfirmedAlerts } from '@/lib/alerts/queries';
 import { startOfDayLocal } from '@/lib/utils/dates';
-
-const SCHEDULE_SELECT =
-  '*, patient:patients!appointments_patient_id_fkey(*), provider:profiles!appointments_provider_id_fkey(*)';
 
 export interface NoShowWeek {
   weekStart: string;
@@ -21,54 +18,104 @@ export interface DashboardMetrics {
 }
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
-  const supabase = await createServerSupabaseClient();
   const now = new Date();
   const dayStart = startOfDayLocal(now);
   const dayEnd = addDays(dayStart, 1);
+  const eightWeeksStart = eightWeeksAgo(now);
 
-  const [todayResult, upcomingResult, noShowResult, unconfirmedAlertsCount] =
+  const [todayRows, upcomingRows, noShowRows, unconfirmedAlertsCount] =
     await Promise.all([
-      supabase
-        .from('appointments')
-        .select('status, patient_id')
-        .gte('scheduled_start', dayStart.toISOString())
-        .lt('scheduled_start', dayEnd.toISOString()),
-      supabase
-        .from('appointments')
-        .select(SCHEDULE_SELECT)
-        .in('status', ['requested', 'confirmed', 'checked_in'])
-        .gte('scheduled_start', now.toISOString())
-        .order('scheduled_start', { ascending: true })
-        .range(0, 4),
-      supabase
-        .from('appointments')
-        .select('status, scheduled_start')
-        .in('status', ['no_show', 'completed'])
-        .gte('scheduled_start', eightWeeksAgo(now).toISOString()),
+      prisma.appointment.findMany({
+        where: {
+          scheduledStart: {
+            gte: dayStart,
+            lt: dayEnd,
+          },
+          archivedAt: null,
+        },
+        select: {
+          status: true,
+          patientId: true,
+        },
+      }),
+      prisma.appointment.findMany({
+        where: {
+          status: { in: ['requested', 'confirmed', 'checked_in'] },
+          scheduledStart: { gte: now },
+          archivedAt: null,
+        },
+        include: {
+          patient: true,
+          provider: true,
+        },
+        orderBy: {
+          scheduledStart: 'asc',
+        },
+        take: 5,
+      }),
+      prisma.appointment.findMany({
+        where: {
+          status: { in: ['no_show', 'completed'] },
+          scheduledStart: { gte: eightWeeksStart },
+          archivedAt: null,
+        },
+        select: {
+          status: true,
+          scheduledStart: true,
+        },
+      }),
       countUnconfirmedAlerts(),
     ]);
 
-  if (todayResult.error) {
-    throw new Error(`Failed to load today's metrics: ${todayResult.error.message}`);
-  }
-  if (upcomingResult.error) {
-    throw new Error(`Failed to load upcoming appointments: ${upcomingResult.error.message}`);
-  }
-  if (noShowResult.error) {
-    throw new Error(`Failed to load no-show history: ${noShowResult.error.message}`);
-  }
-
   const todayByStatus: Record<string, number> = {};
-  for (const row of todayResult.data ?? []) {
+  for (const row of todayRows) {
     const key = row.status === null ? 'available' : row.status;
     todayByStatus[key] = (todayByStatus[key] ?? 0) + 1;
   }
 
+  const upcoming: AppointmentListItem[] = upcomingRows.map((r) => ({
+    id: r.id,
+    provider_id: r.providerId,
+    patient_id: r.patientId,
+    scheduled_start: r.scheduledStart.toISOString(),
+    duration_minutes: r.durationMinutes,
+    status: r.status as any,
+    cancellation_reason: r.cancellationReason,
+    archived_at: r.archivedAt ? r.archivedAt.toISOString() : null,
+    archived_by: r.archivedById,
+    alert_dismissed_at: r.alertDismissedAt ? r.alertDismissedAt.toISOString() : null,
+    alert_dismissed_by: r.alertDismissedById,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+    patient: r.patient
+      ? {
+          id: r.patient.id,
+          full_name: r.patient.fullName,
+          email: r.patient.email,
+          phone: r.patient.phone,
+          date_of_birth: r.patient.dateOfBirth ? r.patient.dateOfBirth.toISOString().split('T')[0] : null,
+          created_at: r.patient.createdAt.toISOString(),
+          updated_at: r.patient.updatedAt.toISOString(),
+        }
+      : null,
+    provider: {
+      id: r.provider.id,
+      email: r.provider.email,
+      full_name: r.provider.fullName,
+      role: r.provider.role as any,
+      created_at: r.provider.createdAt.toISOString(),
+      updated_at: r.provider.updatedAt.toISOString(),
+    },
+  }));
+
   return {
     todayByStatus,
-    upcoming: (upcomingResult.data ?? []) as AppointmentListItem[],
+    upcoming,
     unconfirmedAlertsCount,
-    noShowSeries: buildNoShowSeries(now, noShowResult.data ?? []),
+    noShowSeries: buildNoShowSeries(
+      now,
+      noShowRows.map((r) => ({ status: r.status, scheduled_start: r.scheduledStart.toISOString() })),
+    ),
   };
 }
 

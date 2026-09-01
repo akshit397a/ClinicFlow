@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/prisma';
 import type { AuditEventType } from '@/lib/db/types';
 
 export interface AuditEventInput {
@@ -13,33 +13,20 @@ export interface AuditEventInput {
   metadata?: Record<string, unknown> | null;
 }
 
-/**
- * Appends one immutable audit event. Runs through the trusted admin client; the
- * public API has no write access to appointment_audit_events, so history cannot
- * be forged from a client.
- *
- * Assumption: the audit insert happens immediately after the mutation it
- * describes. It is not transactional with it; if the process dies between the
- * two calls, the event could be lost. For this application the trade-off is
- * acceptable and keeps audit logic readable in one place (see docs/decisions.md).
- */
 export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
-  const admin = createAdminClient();
-  const { error } = await admin.from('appointment_audit_events').insert({
-    appointment_id: input.appointmentId,
-    event_type: input.eventType,
-    actor_id: input.actorId ?? null,
-    old_status: input.oldStatus ?? null,
-    new_status: input.newStatus ?? null,
-    supporting_provider_id: input.supportingProviderId ?? null,
-    cancellation_reason: input.cancellationReason ?? null,
-    note_id: input.noteId ?? null,
-    metadata: input.metadata ?? null,
+  await prisma.appointmentAuditEvent.create({
+    data: {
+      appointmentId: input.appointmentId,
+      eventType: input.eventType,
+      actorId: input.actorId ?? null,
+      oldStatus: input.oldStatus ?? null,
+      newStatus: input.newStatus ?? null,
+      supportingProviderId: input.supportingProviderId ?? null,
+      cancellationReason: input.cancellationReason ?? null,
+      noteId: input.noteId ?? null,
+      metadata: input.metadata as any ?? null,
+    },
   });
-
-  if (error) {
-    throw new Error(`Failed to record audit event: ${error.message}`);
-  }
 }
 
 export function recordStatusChanged(input: {

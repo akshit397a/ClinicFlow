@@ -1,48 +1,61 @@
 import type { Patient } from '@/lib/db/types';
 import type { PatientsQueryInput } from '@/lib/validation/schemas';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { buildPage, getRange, type Page } from '@/lib/utils/pagination';
-
-/** Escape PostgREST filter metacharacters so user input cannot break `.or()`. */
-function escapeFilter(value: string): string {
-  return value.replace(/[\\%,_]/g, (ch) => `\\${ch}`);
-}
+import { prisma } from '@/lib/prisma';
+import { buildPage, type Page } from '@/lib/utils/pagination';
 
 export async function listPatients(
   input: PatientsQueryInput,
 ): Promise<Page<Patient>> {
-  const supabase = await createServerSupabaseClient();
-
-  let query = supabase.from('patients').select('*', { count: 'exact' });
+  const where: any = {};
 
   if (input.search) {
-    query = query.ilike('full_name', `%${escapeFilter(input.search)}%`);
+    where.OR = [
+      { fullName: { contains: input.search, mode: 'insensitive' } },
+      { email: { contains: input.search, mode: 'insensitive' } },
+      { phone: { contains: input.search, mode: 'insensitive' } },
+    ];
   }
 
-  const { from, to } = getRange(input.page, input.pageSize);
-  query = query.order('full_name', { ascending: true }).range(from, to);
+  const skip = (input.page - 1) * input.pageSize;
+  const take = input.pageSize;
 
-  const { data, error, count } = await query;
+  const [rows, totalCount] = await Promise.all([
+    prisma.patient.findMany({
+      where,
+      orderBy: { fullName: 'asc' },
+      skip,
+      take,
+    }),
+    prisma.patient.count({ where }),
+  ]);
 
-  if (error) {
-    throw new Error(`Failed to load patients: ${error.message}`);
-  }
+  const items: Patient[] = rows.map((p) => ({
+    id: p.id,
+    full_name: p.fullName,
+    email: p.email,
+    phone: p.phone,
+    date_of_birth: p.dateOfBirth ? p.dateOfBirth.toISOString().split('T')[0] : null,
+    created_at: p.createdAt.toISOString(),
+    updated_at: p.updatedAt.toISOString(),
+  }));
 
-  return buildPage((data ?? []) as Patient[], count ?? 0, input.page, input.pageSize);
+  return buildPage(items, totalCount, input.page, input.pageSize);
 }
 
 export async function getPatient(id: string): Promise<Patient | null> {
-  const supabase = await createServerSupabaseClient();
+  const p = await prisma.patient.findUnique({
+    where: { id },
+  });
 
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  if (!p) return null;
 
-  if (error) {
-    throw new Error(`Failed to load patient: ${error.message}`);
-  }
-
-  return (data as Patient | null) ?? null;
+  return {
+    id: p.id,
+    full_name: p.fullName,
+    email: p.email,
+    phone: p.phone,
+    date_of_birth: p.dateOfBirth ? p.dateOfBirth.toISOString().split('T')[0] : null,
+    created_at: p.createdAt.toISOString(),
+    updated_at: p.updatedAt.toISOString(),
+  };
 }

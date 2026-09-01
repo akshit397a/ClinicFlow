@@ -3,154 +3,307 @@ import type {
   AppointmentWithRelations,
   Profile,
   VisitNoteWithAuthor,
+  AuditEventWithActor,
 } from '@/lib/db/types';
 import type { AppointmentsQueryInput } from '@/lib/validation/schemas';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { buildPage, getRange, type Page } from '@/lib/utils/pagination';
+import { prisma } from '@/lib/prisma';
+import { buildPage, type Page } from '@/lib/utils/pagination';
 import { addDaysLocal, startOfDayLocal } from '@/lib/utils/dates';
-
-const APPOINTMENT_SELECT =
-  '*, patient:patients!appointments_patient_id_fkey(*), provider:profiles!appointments_provider_id_fkey(*)';
-
-/** Escape PostgREST filter metacharacters so user input cannot break `.or()`. */
-function escapeFilter(value: string): string {
-  return value.replace(/[\\%,_]/g, (ch) => `\\${ch}`);
-}
 
 export async function listAppointments(
   input: AppointmentsQueryInput,
 ): Promise<Page<AppointmentListItem>> {
-  const supabase = await createServerSupabaseClient();
-
-  let query = supabase
-    .from('appointments')
-    .select(APPOINTMENT_SELECT, { count: 'exact' });
+  const where: any = {};
 
   if (input.status === 'available') {
-    query = query.is('patient_id', null);
+    where.patientId = null;
+    where.archivedAt = null;
   } else if (input.status) {
-    query = query.eq('status', input.status);
+    where.status = input.status;
+    where.archivedAt = null;
+  } else {
+    where.archivedAt = null;
   }
 
   if (input.providerId) {
-    query = query.eq('provider_id', input.providerId);
+    where.providerId = input.providerId;
   }
 
   if (input.search) {
-    const escaped = escapeFilter(input.search);
-    query = query.or(
-      `patient.full_name.ilike.%${escaped}%,provider.full_name.ilike.%${escaped}%`,
-    );
+    where.OR = [
+      { patient: { fullName: { contains: input.search, mode: 'insensitive' } } },
+      { provider: { fullName: { contains: input.search, mode: 'insensitive' } } },
+    ];
   }
 
-  if (input.from) {
-    query = query.gte('scheduled_start', input.from.toISOString());
-  }
-  if (input.to) {
-    query = query.lte('scheduled_start', input.to.toISOString());
-  }
-
-  const { from, to } = getRange(input.page, input.pageSize);
-  const ascending = input.sortDir === 'asc';
-
-  query = query
-    .order(input.sortBy, { ascending, nullsFirst: false })
-    .range(from, to);
-
-  const { data, error, count } = await query;
-
-  if (error) {
-    throw new Error(`Failed to load appointments: ${error.message}`);
+  if (input.from || input.to) {
+    where.scheduledStart = {};
+    if (input.from) where.scheduledStart.gte = input.from;
+    if (input.to) where.scheduledStart.lte = input.to;
   }
 
-  return buildPage(
-    (data ?? []) as AppointmentListItem[],
-    count ?? 0,
-    input.page,
-    input.pageSize,
-  );
+  const orderBy: any = {};
+  if (input.sortBy === 'scheduled_start') {
+    orderBy.scheduledStart = input.sortDir;
+  } else if (input.sortBy === 'status') {
+    orderBy.status = input.sortDir;
+  } else if (input.sortBy === 'created_at') {
+    orderBy.createdAt = input.sortDir;
+  } else {
+    orderBy.scheduledStart = 'asc';
+  }
+
+  const skip = (input.page - 1) * input.pageSize;
+  const take = input.pageSize;
+
+  const [rows, totalCount] = await Promise.all([
+    prisma.appointment.findMany({
+      where,
+      orderBy,
+      skip,
+      take,
+      include: {
+        patient: true,
+        provider: true,
+      },
+    }),
+    prisma.appointment.count({ where }),
+  ]);
+
+  const items: AppointmentListItem[] = rows.map((r) => ({
+    id: r.id,
+    provider_id: r.providerId,
+    patient_id: r.patientId,
+    scheduled_start: r.scheduledStart.toISOString(),
+    duration_minutes: r.durationMinutes,
+    status: r.status as any,
+    cancellation_reason: r.cancellationReason,
+    archived_at: r.archivedAt ? r.archivedAt.toISOString() : null,
+    archived_by: r.archivedById,
+    alert_dismissed_at: r.alertDismissedAt ? r.alertDismissedAt.toISOString() : null,
+    alert_dismissed_by: r.alertDismissedById,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+    patient: r.patient
+      ? {
+          id: r.patient.id,
+          full_name: r.patient.fullName,
+          email: r.patient.email,
+          phone: r.patient.phone,
+          date_of_birth: r.patient.dateOfBirth ? r.patient.dateOfBirth.toISOString().split('T')[0] : null,
+          created_at: r.patient.createdAt.toISOString(),
+          updated_at: r.patient.updatedAt.toISOString(),
+        }
+      : null,
+    provider: {
+      id: r.provider.id,
+      email: r.provider.email,
+      full_name: r.provider.fullName,
+      role: r.provider.role as any,
+      created_at: r.provider.createdAt.toISOString(),
+      updated_at: r.provider.updatedAt.toISOString(),
+    },
+  }));
+
+  return buildPage(items, totalCount, input.page, input.pageSize);
 }
 
 export async function getAppointment(
   id: string,
 ): Promise<AppointmentWithRelations | null> {
-  const supabase = await createServerSupabaseClient();
+  const row = await prisma.appointment.findUnique({
+    where: { id },
+    include: {
+      patient: true,
+      provider: true,
+      supportingProviders: {
+        include: {
+          provider: true,
+        },
+      },
+      visitNotes: {
+        include: {
+          authorProvider: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      },
+    },
+  });
 
-  const [base, supportingRows, noteRows, auditRows] = await Promise.all([
-    supabase
-      .from('appointments')
-      .select(APPOINTMENT_SELECT)
-      .eq('id', id)
-      .maybeSingle(),
-    supabase
-      .from('appointment_supporting_providers')
-      .select('provider:profiles!appointment_supporting_providers_provider_id_fkey(*)')
-      .eq('appointment_id', id),
-    supabase
-      .from('visit_notes')
-      .select('*, author:profiles!visit_notes_author_provider_id_fkey(*)')
-      .eq('appointment_id', id)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('appointment_audit_events')
-      .select(
-        '*, actor:profiles!appointment_audit_events_actor_id_fkey(*), supporting_provider:profiles!appointment_audit_events_supporting_provider_id_fkey(*), note:visit_notes(*)',
-      )
-      .eq('appointment_id', id)
-      .order('created_at', { ascending: true }),
-  ]);
+  if (!row) return null;
 
-  if (base.error || !base.data) return null;
-
-  const appointment = base.data as AppointmentWithRelations;
-  appointment.supporting_providers = (supportingRows.data ?? []).map(
-    (row) => (row as { provider: Profile }).provider,
-  );
-  appointment.visit_notes = (noteRows.data ?? []) as VisitNoteWithAuthor[];
-
-  return appointment;
-}
-
-export async function getAppointmentsForPatient(
-  patientId: string,
-): Promise<AppointmentListItem[]> {
-  const supabase = await createServerSupabaseClient();
-
-  const { data, error } = await supabase
-    .from('appointments')
-    .select(APPOINTMENT_SELECT)
-    .eq('patient_id', patientId)
-    .order('scheduled_start', { ascending: false });
-
-  if (error) {
-    throw new Error(`Failed to load patient appointments: ${error.message}`);
-  }
-
-  return (data ?? []) as AppointmentListItem[];
+  return {
+    id: row.id,
+    provider_id: row.providerId,
+    patient_id: row.patientId,
+    scheduled_start: row.scheduledStart.toISOString(),
+    duration_minutes: row.durationMinutes,
+    status: row.status as any,
+    cancellation_reason: row.cancellationReason,
+    archived_at: row.archivedAt ? row.archivedAt.toISOString() : null,
+    archived_by: row.archivedById,
+    alert_dismissed_at: row.alertDismissedAt ? row.alertDismissedAt.toISOString() : null,
+    alert_dismissed_by: row.alertDismissedById,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+    patient: row.patient
+      ? {
+          id: row.patient.id,
+          full_name: row.patient.fullName,
+          email: row.patient.email,
+          phone: row.patient.phone,
+          date_of_birth: row.patient.dateOfBirth ? row.patient.dateOfBirth.toISOString().split('T')[0] : null,
+          created_at: row.patient.createdAt.toISOString(),
+          updated_at: row.patient.updatedAt.toISOString(),
+        }
+      : null,
+    provider: {
+      id: row.provider.id,
+      email: row.provider.email,
+      full_name: row.provider.fullName,
+      role: row.provider.role as any,
+      created_at: row.provider.createdAt.toISOString(),
+      updated_at: row.provider.updatedAt.toISOString(),
+    },
+    supporting_providers: row.supportingProviders.map((sp) => ({
+      id: sp.provider.id,
+      email: sp.provider.email,
+      full_name: sp.provider.fullName,
+      role: sp.provider.role as any,
+      created_at: sp.provider.createdAt.toISOString(),
+      updated_at: sp.provider.updatedAt.toISOString(),
+    })),
+    visit_notes: row.visitNotes.map((vn) => ({
+      id: vn.id,
+      appointment_id: vn.appointmentId,
+      author_provider_id: vn.authorProviderId,
+      content: vn.content,
+      created_at: vn.createdAt.toISOString(),
+      updated_at: vn.updatedAt.toISOString(),
+      author: {
+        id: vn.authorProvider.id,
+        email: vn.authorProvider.email,
+        full_name: vn.authorProvider.fullName,
+        role: vn.authorProvider.role as any,
+        created_at: vn.authorProvider.createdAt.toISOString(),
+        updated_at: vn.authorProvider.updatedAt.toISOString(),
+      },
+    })),
+  };
 }
 
 export async function getDaySchedule(
   providerId: string,
   date: Date,
 ): Promise<AppointmentListItem[]> {
-  const supabase = await createServerSupabaseClient();
-
   const dayStart = startOfDayLocal(date);
   const dayEnd = addDaysLocal(dayStart, 1);
 
-  const { data, error } = await supabase
-    .from('appointments')
-    .select(APPOINTMENT_SELECT)
-    .eq('provider_id', providerId)
-    .gte('scheduled_start', dayStart.toISOString())
-    .lt('scheduled_start', dayEnd.toISOString())
-    .is('archived_at', null)
-    .order('scheduled_start', { ascending: true });
+  const rows = await prisma.appointment.findMany({
+    where: {
+      providerId,
+      scheduledStart: {
+        gte: dayStart,
+        lt: dayEnd,
+      },
+      archivedAt: null,
+    },
+    include: {
+      patient: true,
+      provider: true,
+    },
+    orderBy: {
+      scheduledStart: 'asc',
+    },
+  });
 
-  if (error) {
-    throw new Error(`Failed to load schedule: ${error.message}`);
-  }
-
-  return (data ?? []) as AppointmentListItem[];
+  return rows.map((r) => ({
+    id: r.id,
+    provider_id: r.providerId,
+    patient_id: r.patientId,
+    scheduled_start: r.scheduledStart.toISOString(),
+    duration_minutes: r.durationMinutes,
+    status: r.status as any,
+    cancellation_reason: r.cancellationReason,
+    archived_at: r.archivedAt ? r.archivedAt.toISOString() : null,
+    archived_by: r.archivedById,
+    alert_dismissed_at: r.alertDismissedAt ? r.alertDismissedAt.toISOString() : null,
+    alert_dismissed_by: r.alertDismissedById,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+    patient: r.patient
+      ? {
+          id: r.patient.id,
+          full_name: r.patient.fullName,
+          email: r.patient.email,
+          phone: r.patient.phone,
+          date_of_birth: r.patient.dateOfBirth ? r.patient.dateOfBirth.toISOString().split('T')[0] : null,
+          created_at: r.patient.createdAt.toISOString(),
+          updated_at: r.patient.updatedAt.toISOString(),
+        }
+      : null,
+    provider: {
+      id: r.provider.id,
+      email: r.provider.email,
+      full_name: r.provider.fullName,
+      role: r.provider.role as any,
+      created_at: r.provider.createdAt.toISOString(),
+      updated_at: r.provider.updatedAt.toISOString(),
+    },
+  }));
 }
 
+export async function getAppointmentsForPatient(
+  patientId: string,
+): Promise<AppointmentListItem[]> {
+  const rows = await prisma.appointment.findMany({
+    where: {
+      patientId,
+      archivedAt: null,
+    },
+    include: {
+      patient: true,
+      provider: true,
+    },
+    orderBy: {
+      scheduledStart: 'desc',
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    provider_id: r.providerId,
+    patient_id: r.patientId,
+    scheduled_start: r.scheduledStart.toISOString(),
+    duration_minutes: r.durationMinutes,
+    status: r.status as any,
+    cancellation_reason: r.cancellationReason,
+    archived_at: r.archivedAt ? r.archivedAt.toISOString() : null,
+    archived_by: r.archivedById,
+    alert_dismissed_at: r.alertDismissedAt ? r.alertDismissedAt.toISOString() : null,
+    alert_dismissed_by: r.alertDismissedById,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+    patient: r.patient
+      ? {
+          id: r.patient.id,
+          full_name: r.patient.fullName,
+          email: r.patient.email,
+          phone: r.patient.phone,
+          date_of_birth: r.patient.dateOfBirth ? r.patient.dateOfBirth.toISOString().split('T')[0] : null,
+          created_at: r.patient.createdAt.toISOString(),
+          updated_at: r.patient.updatedAt.toISOString(),
+        }
+      : null,
+    provider: {
+      id: r.provider.id,
+      email: r.provider.email,
+      full_name: r.provider.fullName,
+      role: r.provider.role as any,
+      created_at: r.provider.createdAt.toISOString(),
+      updated_at: r.provider.updatedAt.toISOString(),
+    },
+  }));
+}

@@ -1,18 +1,18 @@
 import type { Profile } from '@/lib/db/types';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { prisma } from '@/lib/prisma';
 
 export async function listProviders(): Promise<Profile[]> {
-  const supabase = await createServerSupabaseClient();
+  const rows = await prisma.profile.findMany({
+    where: { role: 'provider' },
+    orderBy: { fullName: 'asc' },
+  });
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('role', 'provider')
-    .order('full_name', { ascending: true });
-
-  if (error) {
-    throw new Error(`Failed to load providers: ${error.message}`);
-  }
-
-  return (data ?? []) as Profile[];
+  return rows.map((r) => ({
+    id: r.id,
+    email: r.email,
+    full_name: r.fullName,
+    role: r.role as any,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+  }));
 }

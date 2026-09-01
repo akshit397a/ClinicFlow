@@ -1,48 +1,49 @@
 import Link from 'next/link';
 import type { AppointmentListItem } from '@/lib/db/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { formatTime } from '@/lib/utils/dates';
+import { formatDate, formatTime } from '@/lib/utils/dates';
 
 export function AppointmentTable({ rows }: { rows: AppointmentListItem[] }) {
   return (
     <table className="w-full text-left text-sm">
       <thead>
-        <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-          <th className="py-2 pr-4">Time</th>
-          <th className="py-2 pr-4">Patient</th>
-          <th className="py-2 pr-4">Provider</th>
-          <th className="py-2 pr-4">Status</th>
-          <th className="py-2" />
+        <tr className="border-b border-[#f3f4f6]">
+          <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Date & Time</th>
+          <th className="py-3 pr-5 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Patient</th>
+          <th className="py-3 pr-5 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Provider</th>
+          <th className="py-3 pr-5 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Status</th>
+          <th className="py-3 pr-5" />
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-            <td className="py-2.5 pr-4 font-medium text-slate-900">
-              {formatTime(row.scheduled_start)}
+          <tr key={row.id} className="border-b border-[#f3f4f6] last:border-0 hover:bg-[#fafafa] transition-colors">
+            <td className="px-5 py-3.5">
+              <p className="font-medium text-[#111111] tabular-nums">{formatTime(row.scheduled_start)}</p>
+              <p className="text-xs text-[#9ca3af] mt-0.5">{formatDate(row.scheduled_start)}</p>
             </td>
-            <td className="py-2.5 pr-4 text-slate-700">
+            <td className="py-3.5 pr-5">
               {row.patient ? (
                 <Link
                   href={`/patients/${row.patient.id}`}
-                  className="text-blue-600 hover:underline"
+                  className="font-medium text-[#111111] hover:underline"
                 >
                   {row.patient.full_name}
                 </Link>
               ) : (
-                <span className="text-slate-400">Available slot</span>
+                <span className="text-[#9ca3af] italic">Available slot</span>
               )}
             </td>
-            <td className="py-2.5 pr-4 text-slate-700">{row.provider.full_name}</td>
-            <td className="py-2.5 pr-4">
+            <td className="py-3.5 pr-5 text-[#374151]">{row.provider.full_name}</td>
+            <td className="py-3.5 pr-5">
               <StatusBadge status={row.status} />
             </td>
-            <td className="py-2.5 text-right">
+            <td className="py-3.5 pr-5 text-right">
               <Link
                 href={`/appointments/${row.id}`}
-                className="text-sm font-medium text-blue-600 hover:underline"
+                className="text-xs font-medium text-[#6b7280] hover:text-[#111111] transition-colors"
               >
-                View
+                View →
               </Link>
             </td>
           </tr>

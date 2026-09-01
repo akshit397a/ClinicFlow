@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Profile {
+  id                             String                          @id @db.Uuid
+  email                          String
+  fullName                       String                          @default("") @map("full_name")
+  role                           String
+  createdAt                      DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                      DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  auditEventsActed               AppointmentAuditEvent[]         @relation("Actor")
+  auditEventsSupporting          AppointmentAuditEvent[]         @relation("SupportingProvider")
+  supportingAppointmentsAssigned AppointmentSupportingProvider[] @relation("AssignedBy")
+  supportingAppointments         AppointmentSupportingProvider[] @relation("Provider")
+  dismissedAlertAppointments     Appointment[]                   @relation("AlertDismissedBy")
+  archivedAppointments           Appointment[]                   @relation("ArchivedBy")
+  primaryAppointments            Appointment[]                   @relation("PrimaryProvider")
+  authoredNotes                  VisitNote[]                     @relation("AuthorProvider")
+
+  @@map("profiles")
+}
+
+model Patient {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName     String        @map("full_name")
+  email        String?
+  phone        String?
+  dateOfBirth  DateTime?     @map("date_of_birth") @db.Date
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  appointments Appointment[]
+
+  @@map("patients")
+}
+
+model Appointment {
+  id                  String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerId          String                          @map("provider_id") @db.Uuid
+  patientId           String?                         @map("patient_id") @db.Uuid
+  scheduledStart      DateTime                        @map("scheduled_start") @db.Timestamptz(6)
+  durationMinutes     Int                             @map("duration_minutes")
+  status              String?                         @map("status")
+  cancellationReason  String?                         @map("cancellation_reason")
+  archivedAt          DateTime?                       @map("archived_at") @db.Timestamptz(6)
+  archivedById        String?                         @map("archived_by") @db.Uuid
+  alertDismissedAt    DateTime?                       @map("alert_dismissed_at") @db.Timestamptz(6)
+  alertDismissedById  String?                         @map("alert_dismissed_by") @db.Uuid
+  createdAt           DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  auditEvents         AppointmentAuditEvent[]
+  supportingProviders AppointmentSupportingProvider[]
+  alertDismissedBy    Profile?                        @relation("AlertDismissedBy", fields: [alertDismissedById], references: [id])
+  archivedBy          Profile?                        @relation("ArchivedBy", fields: [archivedById], references: [id])
+  patient             Patient?                        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  provider            Profile                         @relation("PrimaryProvider", fields: [providerId], references: [id])
+  visitNotes          VisitNote[]
+
+  @@map("appointments")
+}
+
+model AppointmentSupportingProvider {
+  appointmentId String      @map("appointment_id") @db.Uuid
+  providerId    String      @map("provider_id") @db.Uuid
+  assignedById  String      @map("assigned_by") @db.Uuid
+  assignedAt    DateTime    @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  assignedBy    Profile     @relation("AssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  provider      Profile     @relation("Provider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@id([appointmentId, providerId])
+  @@map("appointment_supporting_providers")
+}
+
+model VisitNote {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointmentId    String                  @map("appointment_id") @db.Uuid
+  authorProviderId String                  @map("author_provider_id") @db.Uuid
+  content          String
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  auditEvents      AppointmentAuditEvent[]
+  appointment      Appointment             @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  authorProvider   Profile                 @relation("AuthorProvider", fields: [authorProviderId], references: [id])
+
+  @@map("visit_notes")
+}
+
+model AppointmentAuditEvent {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointmentId        String      @map("appointment_id") @db.Uuid
+  eventType            String      @map("event_type")
+  actorId              String?     @map("actor_id") @db.Uuid
+  oldStatus            String?     @map("old_status")
+  newStatus            String?     @map("new_status")
+  supportingProviderId String?     @map("supporting_provider_id") @db.Uuid
+  cancellationReason   String?     @map("cancellation_reason")
+  noteId               String?     @map("note_id") @db.Uuid
+  metadata             Json?
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor                Profile?    @relation("Actor", fields: [actorId], references: [id])
+  appointment          Appointment @relation(fields: [appointmentId], references: [id])
+  note                 VisitNote?  @relation(fields: [noteId], references: [id])
+  supportingProvider   Profile?    @relation("SupportingProvider", fields: [supportingProviderId], references: [id])
+
+  @@map("appointment_audit_events")
+}

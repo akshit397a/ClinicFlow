@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth/require-auth';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/prisma';
 import { toErrorMessage } from '@/lib/utils/errors';
 import { fail } from '@/lib/utils/result';
 import { canManageAvailability } from '@/lib/appointments/permissions';
@@ -39,19 +39,25 @@ export async function generateAvailabilityAction(
     return fail('The rule produced no slots (check weekdays and time range).');
   }
 
-  const admin = createAdminClient();
-  const { data: inserted, error } = await admin
-    .from('appointments')
-    .insert(slots)
-    .select('id');
-  if (error) return fail(toErrorMessage(error));
+  try {
+    for (const slot of slots) {
+      const created = await prisma.appointment.create({
+        data: {
+          providerId: slot.provider_id,
+          scheduledStart: new Date(slot.scheduled_start),
+          durationMinutes: slot.duration_minutes,
+          patientId: null,
+          status: null,
+        },
+      });
+      await recordSlotCreated({ appointmentId: created.id, actorId: user.id });
+    }
 
-  for (const row of inserted ?? []) {
-    await recordSlotCreated({ appointmentId: row.id, actorId: user.id });
+    revalidatePath('/');
+    revalidatePath('/schedule');
+    revalidatePath('/appointments');
+    return { ok: true, created: slots.length };
+  } catch (error) {
+    return fail(toErrorMessage(error));
   }
-
-  revalidatePath('/');
-  revalidatePath('/schedule');
-  revalidatePath('/appointments');
-  return { ok: true, created: slots.length };
 }

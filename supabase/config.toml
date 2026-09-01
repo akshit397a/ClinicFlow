@@ -1,0 +1,20 @@
+project_id = "clinic-scheduler"
+
+[api]
+enabled = true
+
+[db]
+enabled = true
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+
+[storage]
+enabled = false
+
+[analytics]
+enabled = false

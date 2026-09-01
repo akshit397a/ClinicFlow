@@ -1,23 +1,60 @@
 import type { AuditEventWithActor } from '@/lib/db/types';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { prisma } from '@/lib/prisma';
 
-/** Immutable audit timeline for one appointment, oldest first. Read-only. */
 export async function getAppointmentAudit(
   appointmentId: string,
 ): Promise<AuditEventWithActor[]> {
-  const supabase = await createServerSupabaseClient();
+  const rows = await prisma.appointmentAuditEvent.findMany({
+    where: { appointmentId },
+    include: {
+      actor: true,
+      supportingProvider: true,
+      note: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
 
-  const { data, error } = await supabase
-    .from('appointment_audit_events')
-    .select(
-      '*, actor:profiles!appointment_audit_events_actor_id_fkey(*), supporting_provider:profiles!appointment_audit_events_supporting_provider_id_fkey(*), note:visit_notes(*)',
-    )
-    .eq('appointment_id', appointmentId)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    throw new Error(`Failed to load appointment history: ${error.message}`);
-  }
-
-  return (data ?? []) as AuditEventWithActor[];
+  return rows.map((r) => ({
+    id: r.id,
+    appointment_id: r.appointmentId,
+    event_type: r.eventType as any,
+    actor_id: r.actorId,
+    old_status: r.oldStatus,
+    new_status: r.newStatus,
+    supporting_provider_id: r.supportingProviderId,
+    cancellation_reason: r.cancellationReason,
+    note_id: r.noteId,
+    metadata: r.metadata,
+    created_at: r.createdAt.toISOString(),
+    actor: r.actor
+      ? {
+          id: r.actor.id,
+          email: r.actor.email,
+          full_name: r.actor.fullName,
+          role: r.actor.role as any,
+          created_at: r.actor.createdAt.toISOString(),
+          updated_at: r.actor.updatedAt.toISOString(),
+        }
+      : null,
+    supporting_provider: r.supportingProvider
+      ? {
+          id: r.supportingProvider.id,
+          email: r.supportingProvider.email,
+          full_name: r.supportingProvider.fullName,
+          role: r.supportingProvider.role as any,
+          created_at: r.supportingProvider.createdAt.toISOString(),
+          updated_at: r.supportingProvider.updatedAt.toISOString(),
+        }
+      : null,
+    note: r.note
+      ? {
+          id: r.note.id,
+          appointment_id: r.note.appointmentId,
+          author_provider_id: r.note.authorProviderId,
+          content: r.note.content,
+          created_at: r.note.createdAt.toISOString(),
+          updated_at: r.note.updatedAt.toISOString(),
+        }
+      : null,
+  }));
 }

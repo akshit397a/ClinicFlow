@@ -1,5 +1,6 @@
 import type { Profile } from '@/lib/db/types';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { prisma } from '@/lib/prisma';
 
 export interface CurrentUser {
   id: string;
@@ -7,10 +8,6 @@ export interface CurrentUser {
   profile: Profile;
 }
 
-/**
- * Returns the signed-in user and their profile, or null when unauthenticated.
- * Reads go through the authenticated session client (RLS applies).
- */
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const supabase = await createServerSupabaseClient();
 
@@ -20,13 +17,22 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
   if (!user) return null;
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+  const profile = await prisma.profile.findUnique({
+    where: { id: user.id },
+  });
 
   if (!profile) return null;
 
-  return { id: user.id, email: user.email ?? '', profile: profile as Profile };
+  return {
+    id: user.id,
+    email: user.email ?? profile.email,
+    profile: {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.fullName,
+      role: profile.role as any,
+      created_at: profile.createdAt.toISOString(),
+      updated_at: profile.updatedAt.toISOString(),
+    },
+  };
 }
