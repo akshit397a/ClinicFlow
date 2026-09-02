@@ -1,67 +1,52 @@
 # Submission
 
-## What was built
+Fill this in and commit it. This is the first file we open.
 
-A multi-provider clinic appointment scheduling application:
+## Links
 
-- **Next.js 15 (App Router) + TypeScript + Tailwind**, with React Server
-  Components for pages and Client Components only where interactivity requires
-  it, Server Actions for all mutations, and a Route Handler for CSV export.
-- **Supabase (PostgreSQL + Auth + RLS)** with `@supabase/ssr` for sessions.
-- **One scheduling entity** (`appointments`) for both available slots and booked
-  appointments, with database-level overlap protection.
-- Immutable **audit timeline**, **supporting providers**, **visit notes**,
-  server-side **search/filter/sort/pagination**, bulk **recurring availability
-  generation**, daily **CSV export**, **dashboard metrics** including an
-  eight-week no-show chart, and **unconfirmed alerts** with the
-  dismissal/reappearance rule.
+- **GitHub repository:** <public repo URL>
+- **Live application:** <deployed URL>
 
-## Key design points (details in `docs/`)
+## Notes for the reviewer
 
-1. **Writes are trusted server code, reads go through RLS.** All mutations run
-   in Server Actions after explicit auth + role + ownership checks and write via
-   the service-role client. RLS grants SELECT only, so the public API can never
-   write — including to the audit table.
-2. **Overlap protection is a Postgres EXCLUDE constraint** on a generated
-   `tstzrange`, enforced atomically — no query-then-insert race, safe under
-   concurrency, including bulk slot creation.
-3. **Alerts are time-derived** (requested, in the future, within 24h, not
-   dismissed unless within one hour when they reappear) — no background job.
-4. **Search is server-side** with `pg_trgm` + `ILIKE`; no search engine needed.
-5. **Constraints over application code**: slots vs appointments, cancelled
-   requires a reason, duplicate supporting providers (composite PK), audit
-   append-only.
+<Anything we should know before opening the link — e.g. your host sleeps when idle and the first
+request can take up to a minute.>
 
-## How to run
+## Demo credentials
 
-1. Supabase CLI: `npx supabase start` then `npx supabase db reset`
-   (applies `supabase/migrations/001..009` + `supabase/seed.sql`).
-2. `cp .env.example .env.local` and fill in the three keys.
-3. `npm install && npm run dev` → http://localhost:3000
+| Role | Email | Password |
+|------|-------|----------|
+| <role 1> | | |
+| <role 2> | | |
 
-Demo logins (password `password123`): `front_desk.one@clinic.test`,
-`provider.alice@clinic.test`, `provider.bob@clinic.test`,
-`provider.carol@clinic.test`, `front_desk.two@clinic.test`.
+## Stack
 
-## Verification
+| Layer | What you used | Why |
+|-------|---------------|-----|
+| Frontend | | |
+| Backend | | |
+| Database | | |
+| Hosting | | |
 
-```bash
-npm run lint
-npm run typecheck
-npm test
-npm run build
-```
+## Goal checklist
 
-Integration tests (`npm run test:integration`) additionally verify the overlap
-constraint, the cancelled-reason check, and RLS write protection against a live
-local Supabase stack.
+Mark each honestly. Partial is fine — say what is partial.
 
-## Notable assumptions / trade-offs (see `docs/decisions.md`)
+| # | Goal | Status | Notes |
+|---|------|--------|-------|
+| 1 | | Done / Partial / Not done | |
+| 2 | | | |
+| 3 | | | |
+| 4 | | | |
+| 5 | | | |
+| 6 | | | |
+| 7 | | | |
+| 8 | | | |
+| 9 | | | |
+| 10 | | | |
 
-- Audit events are appended after each mutation (not in a DB trigger); a crash
-  between the two could lose an event.
-- Alert dismissal is not audited (it is UI state).
-- Seed data is relative to `now()` so a current day always renders; re-run
-  `supabase db reset` to refresh.
-- Providers transition status only on their own appointments; front desk can
-  act on any appointment.
+## How much time did you actually spend?
+
+## What would you do next, with another 12 hours?
+
+## What are you least happy with in this codebase, and why?

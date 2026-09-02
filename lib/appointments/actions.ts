@@ -12,7 +12,9 @@ import {
   canBookSlot,
   canCancel,
   canDismissAlert,
+  canEditNote,
   canManageAvailability,
+  canReassignProvider,
   canRemoveSupportingProvider,
   canTransitionStatus,
 } from '@/lib/appointments/permissions';
@@ -26,7 +28,11 @@ import {
 import {
   recordCancelled,
   recordNoteAdded,
+  recordNoteEdited,
+  recordProviderReassigned,
   recordSlotArchived,
+  recordSlotEdited,
+  recordSlotRestored,
   recordStatusChanged,
   recordSupportingProviderAdded,
   recordSupportingProviderRemoved,
@@ -38,7 +44,11 @@ import {
   bookSlotSchema,
   cancelAppointmentSchema,
   dismissAlertSchema,
+  editNoteSchema,
+  editSlotSchema,
+  reassignProviderSchema,
   removeSupportingProviderSchema,
+  restoreSlotSchema,
   transitionStatusSchema,
   type AddNoteInput,
   type ArchiveSlotInput,
@@ -46,18 +56,23 @@ import {
   type BookSlotInput,
   type CancelAppointmentInput,
   type DismissAlertInput,
+  type EditNoteInput,
+  type EditSlotInput,
+  type ReassignProviderInput,
   type RemoveSupportingProviderInput,
+  type RestoreSlotInput,
   type TransitionStatusInput,
 } from '@/lib/validation/schemas';
 
 interface AppointmentRow extends AppointmentForPermission {
   id: string;
+  scheduled_start: string;
 }
 
 async function getAppointmentForAction(id: string): Promise<AppointmentRow | null> {
   const row = await prisma.appointment.findUnique({
     where: { id },
-    select: { id: true, providerId: true, patientId: true, status: true },
+    select: { id: true, providerId: true, patientId: true, status: true, scheduledStart: true },
   });
   if (!row) return null;
   return {
@@ -65,6 +80,7 @@ async function getAppointmentForAction(id: string): Promise<AppointmentRow | nul
     provider_id: row.providerId,
     patient_id: row.patientId,
     status: row.status as any,
+    scheduled_start: row.scheduledStart.toISOString(),
   };
 }
 
@@ -136,7 +152,9 @@ export async function transitionStatusAction(
     return fail('Not authorized to change appointment status.');
   }
 
-  const transitionCheck = validateTransition(appointment.status, toStatus);
+  const transitionCheck = validateTransition(appointment.status, toStatus, {
+    scheduledStart: appointment.scheduled_start,
+  });
   if (!transitionCheck.ok) return transitionCheck;
 
   try {
@@ -382,6 +400,185 @@ export async function archiveSlotAction(
     });
 
     refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
+}
+
+export async function restoreSlotAction(
+  input: RestoreSlotInput,
+): Promise<ActionResult> {
+  const user = await requireAuth();
+  const parsed = restoreSlotSchema.safeParse(input);
+  if (!parsed.success) return fail('Invalid slot details.');
+
+  const { appointmentId } = parsed.data;
+  const row = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+  });
+  if (!row) return fail('Slot not found.');
+  if (row.archivedAt === null) return fail('Slot is not archived.');
+
+  if (!canManageAvailability(user.profile, { provider_id: row.providerId, patient_id: row.patientId, status: row.status as any })) {
+    return fail('Not authorized to manage this schedule.');
+  }
+
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        archivedAt: null,
+        archivedById: null,
+      },
+    });
+
+    await recordSlotRestored({
+      appointmentId,
+      actorId: user.id,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
+}
+
+export async function editSlotAction(
+  input: EditSlotInput,
+): Promise<ActionResult> {
+  const user = await requireAuth();
+  const parsed = editSlotSchema.safeParse(input);
+  if (!parsed.success) return fail('Invalid slot edit details.');
+
+  const { appointmentId, scheduledStart, durationMinutes } = parsed.data;
+  const row = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+  });
+  if (!row) return fail('Slot not found.');
+  if (row.patientId !== null || row.status !== null) {
+    return fail('Only unbooked availability slots can be edited.');
+  }
+
+  if (!canManageAvailability(user.profile, { provider_id: row.providerId, patient_id: row.patientId, status: row.status as any })) {
+    return fail('Not authorized to edit this schedule slot.');
+  }
+
+  try {
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        scheduledStart,
+        durationMinutes,
+      },
+    });
+
+    await recordSlotEdited({
+      appointmentId,
+      actorId: user.id,
+      metadata: {
+        newStart: scheduledStart.toISOString(),
+        durationMinutes,
+      },
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
+}
+
+export async function reassignProviderAction(
+  input: ReassignProviderInput,
+): Promise<ActionResult> {
+  const user = await requireAuth();
+  const parsed = reassignProviderSchema.safeParse(input);
+  if (!parsed.success) return fail('Invalid reassignment details.');
+
+  const { appointmentId, newProviderId } = parsed.data;
+  const appointment = await getAppointmentForAction(appointmentId);
+  if (!appointment) return fail('Appointment not found.');
+
+  if (!canReassignProvider(user.profile)) {
+    return fail('Only front-desk staff can reassign appointments between providers.');
+  }
+
+  if (appointment.provider_id === newProviderId) {
+    return fail('Appointment is already assigned to this provider.');
+  }
+
+  const newProvider = await prisma.profile.findUnique({
+    where: { id: newProviderId },
+  });
+  if (!newProvider || newProvider.role !== 'provider') {
+    return fail('Target provider does not exist.');
+  }
+
+  try {
+    const oldProviderId = appointment.provider_id;
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        providerId: newProviderId,
+      },
+    });
+
+    await prisma.appointmentSupportingProvider.deleteMany({
+      where: {
+        appointmentId,
+        providerId: newProviderId,
+      },
+    });
+
+    await recordProviderReassigned({
+      appointmentId,
+      actorId: user.id,
+      oldProviderId,
+      newProviderId,
+    });
+
+    refreshRelevantPaths(appointmentId);
+    return ok();
+  } catch (err) {
+    return fail(toErrorMessage(err));
+  }
+}
+
+export async function editNoteAction(
+  input: EditNoteInput,
+): Promise<ActionResult> {
+  const user = await requireAuth();
+  const parsed = editNoteSchema.safeParse(input);
+  if (!parsed.success) return fail('Invalid note details.');
+
+  const { noteId, content } = parsed.data;
+  const note = await prisma.visitNote.findUnique({
+    where: { id: noteId },
+  });
+  if (!note) return fail('Visit note not found.');
+
+  if (!canEditNote(user.profile, note.authorProviderId)) {
+    return fail('Only the provider who wrote this visit note can edit it.');
+  }
+
+  try {
+    await prisma.visitNote.update({
+      where: { id: noteId },
+      data: {
+        content: content.trim(),
+        updatedAt: new Date(),
+      },
+    });
+
+    await recordNoteEdited({
+      appointmentId: note.appointmentId,
+      actorId: user.id,
+      noteId: note.id,
+    });
+
+    refreshRelevantPaths(note.appointmentId);
     return ok();
   } catch (err) {
     return fail(toErrorMessage(err));

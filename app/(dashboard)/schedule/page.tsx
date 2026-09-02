@@ -28,7 +28,10 @@ export default async function SchedulePage({ searchParams }: Props) {
     user.profile.role === 'provider'
       ? user.profile.id
       : providers[0]?.id ?? '';
-  const providerId = single(raw.provider_id) ?? defaultProviderId;
+  const providerId =
+    user.profile.role === 'provider'
+      ? user.profile.id
+      : single(raw.provider_id) ?? defaultProviderId;
 
   const rows = providerId ? await getDaySchedule(providerId, date) : [];
 
@@ -39,26 +42,36 @@ export default async function SchedulePage({ searchParams }: Props) {
       {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold text-[#111111] tracking-tight">Schedule</h1>
-        <p className="mt-1 text-sm text-[#6b7280]">View and manage provider day schedules</p>
+        <p className="mt-1 text-sm text-[#6b7280]">
+          {user.profile.role === 'provider'
+            ? 'Your daily patient schedule and clinical appointments'
+            : 'View and manage provider day schedules'}
+        </p>
       </div>
 
       {/* Day picker */}
       <Card>
         <CardHeader>
-          <CardTitle>Select day &amp; provider</CardTitle>
+          <CardTitle>
+            {user.profile.role === 'provider' ? 'Select date' : 'Select day & provider'}
+          </CardTitle>
         </CardHeader>
         <CardBody>
           <form method="get" className="flex flex-wrap items-end gap-4">
-            <div className="min-w-40 flex-1">
-              <Label htmlFor="provider_id">Provider</Label>
-              <Select id="provider_id" name="provider_id" defaultValue={providerId}>
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            {user.profile.role === 'provider' ? (
+              <input type="hidden" name="provider_id" value={user.profile.id} />
+            ) : (
+              <div className="min-w-40 flex-1">
+                <Label htmlFor="provider_id">Provider</Label>
+                <Select id="provider_id" name="provider_id" defaultValue={providerId}>
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.full_name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
             <div className="min-w-40 flex-1">
               <Label htmlFor="date">Date</Label>
               <input
@@ -79,11 +92,11 @@ export default async function SchedulePage({ searchParams }: Props) {
         </CardBody>
       </Card>
 
-      {/* Day schedule */}
+      {/* Day schedule grid */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex items-center justify-between">
           <CardTitle>
-            {formatDate(date)}
+            {formatDate(date)} — {rows.length} slot{rows.length === 1 ? '' : 's'}
           </CardTitle>
           {selectedProvider && (
             <div className="flex items-center gap-2">
@@ -99,18 +112,31 @@ export default async function SchedulePage({ searchParams }: Props) {
         </CardBody>
       </Card>
 
-      {/* Bulk availability */}
-      {user.profile.role === 'front_desk' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Generate availability slots</CardTitle>
-            <span className="text-xs text-[#9ca3af]">Bulk create open slots for a provider</span>
-          </CardHeader>
-          <CardBody>
-            <BulkAvailabilityForm providers={providers} defaultProviderId={defaultProviderId} />
-          </CardBody>
-        </Card>
-      )}
+      {/* Availability generation */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {user.profile.role === 'provider'
+              ? 'Open availability slots'
+              : 'Generate availability slots'}
+          </CardTitle>
+          <span className="text-xs text-[#9ca3af]">
+            {user.profile.role === 'provider'
+              ? 'Create recurring open slots for your practice'
+              : 'Bulk create open slots for any provider'}
+          </span>
+        </CardHeader>
+        <CardBody>
+          <BulkAvailabilityForm
+            providers={
+              user.profile.role === 'provider'
+                ? providers.filter((p) => p.id === user.profile.id)
+                : providers
+            }
+            defaultProviderId={defaultProviderId}
+          />
+        </CardBody>
+      </Card>
     </div>
   );
 }

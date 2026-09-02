@@ -25,6 +25,16 @@ describe('appointment validators', () => {
     expect(validateTransition(null, 'requested').ok).toBe(false);
   });
 
+  it('only allows marking No Show after scheduled time has passed', () => {
+    const past = new Date(Date.now() - 3600_000);
+    const future = new Date(Date.now() + 3600_000);
+
+    expect(validateTransition('confirmed', 'no_show', { scheduledStart: past }).ok).toBe(true);
+    const futureCheck = validateTransition('confirmed', 'no_show', { scheduledStart: future });
+    expect(futureCheck.ok).toBe(false);
+    expect((futureCheck as any).error).toContain('before its scheduled time has passed');
+  });
+
   it('only allows cancelling requested or confirmed appointments', () => {
     expect(validateCancellation(requested).ok).toBe(true);
     expect(validateCancellation(confirmed).ok).toBe(true);

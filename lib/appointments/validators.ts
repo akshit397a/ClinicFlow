@@ -14,6 +14,7 @@ export function validateBooking(appointment: AppointmentForPermission): Validati
 export function validateTransition(
   from: AppointmentStatus | null,
   to: AppointmentStatus,
+  context?: { scheduledStart?: string | Date; now?: Date },
 ): ValidationResult {
   if (!canTransition(from, to)) {
     return {
@@ -21,6 +22,19 @@ export function validateTransition(
       error: `Cannot move an appointment from "${from ?? 'available'}" to "${to}".`,
     };
   }
+
+  // Requirement: It can be marked No Show only from Confirmed, and only after the slot's scheduled time has passed.
+  if (to === 'no_show' && context?.scheduledStart) {
+    const start = new Date(context.scheduledStart);
+    const now = context.now ?? new Date();
+    if (start.getTime() > now.getTime()) {
+      return {
+        ok: false,
+        error: 'Cannot mark an appointment as No Show before its scheduled time has passed.',
+      };
+    }
+  }
+
   return { ok: true };
 }
 

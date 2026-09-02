@@ -9,7 +9,9 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { AppointmentActions } from '@/components/appointments/AppointmentActions';
 import { BookSlotForm } from '@/components/appointments/BookSlotForm';
+import { SlotControls } from '@/components/appointments/SlotControls';
 import { AddNoteForm } from '@/components/appointments/AddNoteForm';
+import { VisitNoteItem } from '@/components/appointments/VisitNoteItem';
 import { SupportingProvidersForm } from '@/components/appointments/SupportingProvidersForm';
 import { Timeline } from '@/components/appointments/Timeline';
 import { formatDate, formatTime } from '@/lib/utils/dates';
@@ -78,13 +80,25 @@ export default async function AppointmentDetailPage({ params }: Props) {
         </CardHeader>
         <CardBody>
           {isSlot ? (
-            user.profile.role === 'front_desk' ? (
-              <BookSlotForm appointmentId={appointment.id} patients={patientsPage.rows} />
-            ) : (
-              <p className="text-sm text-[#6b7280]">
-                This slot is available. Front-desk staff can book it.
-              </p>
-            )
+            <div className="space-y-4">
+              {user.profile.role === 'front_desk' ? (
+                <BookSlotForm appointmentId={appointment.id} patients={patientsPage.rows} />
+              ) : (
+                <p className="text-sm text-[#6b7280]">
+                  This slot is available. Front-desk staff can book it.
+                </p>
+              )}
+              <SlotControls
+                appointment={{
+                  id: appointment.id,
+                  scheduled_start: appointment.scheduled_start,
+                  duration_minutes: appointment.duration_minutes,
+                  provider_id: appointment.provider_id,
+                  archived_at: appointment.archived_at,
+                }}
+                currentUser={{ id: user.id, role: user.profile.role }}
+              />
+            </div>
           ) : (
             <AppointmentActions
               appointment={{
@@ -93,6 +107,7 @@ export default async function AppointmentDetailPage({ params }: Props) {
                 provider_id: appointment.provider_id,
               }}
               currentUser={{ id: user.id, role: user.profile.role }}
+              providers={providers}
             />
           )}
 
@@ -171,12 +186,11 @@ export default async function AppointmentDetailPage({ params }: Props) {
                   <p className="text-sm text-[#9ca3af]">No notes yet.</p>
                 )}
                 {appointment.visit_notes.map((note) => (
-                  <div key={note.id} className="rounded-xl border border-[#f3f4f6] bg-[#fafafa] p-4">
-                    <p className="text-sm text-[#111111] leading-relaxed">{note.content}</p>
-                    <p className="mt-2 text-xs text-[#9ca3af]">
-                      {note.author.full_name} · {formatDate(note.created_at)}
-                    </p>
-                  </div>
+                  <VisitNoteItem
+                    key={note.id}
+                    note={note}
+                    currentUserId={user.id}
+                  />
                 ))}
                 {canAddNote ? (
                   <AddNoteForm appointmentId={appointment.id} />

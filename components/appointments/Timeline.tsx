@@ -13,12 +13,20 @@ function eventText(event: AuditEventWithActor): string {
       return `Supporting provider added: ${event.supporting_provider?.full_name ?? 'unknown'}`;
     case 'SUPPORTING_PROVIDER_REMOVED':
       return `Supporting provider removed: ${event.supporting_provider?.full_name ?? 'unknown'}`;
+    case 'PROVIDER_REASSIGNED':
+      return `Primary provider reassigned${event.supporting_provider ? `: ${event.supporting_provider.full_name}` : ''}`;
     case 'SLOT_CREATED':
       return 'Available slot created';
     case 'SLOT_ARCHIVED':
       return 'Slot archived';
+    case 'SLOT_RESTORED':
+      return 'Slot restored to active schedule';
+    case 'SLOT_EDITED':
+      return 'Slot timing / duration updated';
+    case 'NOTE_EDITED':
+      return 'Visit note edited';
     default:
-      return event.event_type;
+      return String(event.event_type ?? '').replace(/_/g, ' ').toLowerCase();
   }
 }
 
@@ -27,8 +35,12 @@ function getEventDot(type: string): string {
     case 'CANCELLED': return 'bg-red-500';
     case 'STATUS_CHANGED': return 'bg-blue-500';
     case 'NOTE_ADDED': return 'bg-emerald-500';
+    case 'NOTE_EDITED': return 'bg-teal-500';
     case 'SUPPORTING_PROVIDER_ADDED':
     case 'SUPPORTING_PROVIDER_REMOVED': return 'bg-violet-500';
+    case 'PROVIDER_REASSIGNED': return 'bg-indigo-500';
+    case 'SLOT_RESTORED': return 'bg-emerald-500';
+    case 'SLOT_EDITED': return 'bg-amber-500';
     default: return 'bg-[#9ca3af]';
   }
 }

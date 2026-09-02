@@ -58,6 +58,26 @@ export const archiveSlotSchema = z.object({
   appointmentId: uuidSchema,
 });
 
+export const restoreSlotSchema = z.object({
+  appointmentId: uuidSchema,
+});
+
+export const editSlotSchema = z.object({
+  appointmentId: uuidSchema,
+  scheduledStart: z.coerce.date(),
+  durationMinutes: z.number().int().min(5).max(480),
+});
+
+export const reassignProviderSchema = z.object({
+  appointmentId: uuidSchema,
+  newProviderId: uuidSchema,
+});
+
+export const editNoteSchema = z.object({
+  noteId: uuidSchema,
+  content: z.string().trim().min(1).max(5000),
+});
+
 export const patientSchema = z.object({
   fullName: z.string().trim().min(1).max(200),
   email: z.string().trim().email().max(320).nullable().optional(),
@@ -99,7 +119,9 @@ export const appointmentsQuerySchema = z.object({
   providerId: uuidSchema.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
-  sortBy: z.enum(['scheduled_start', 'created_at', 'status']).default('scheduled_start'),
+  sortBy: z
+    .enum(['scheduled_start', 'created_at', 'status', 'provider'])
+    .default('scheduled_start'),
   sortDir: z.enum(['asc', 'desc']).default('asc'),
 });
 
@@ -113,10 +135,14 @@ export type BookSlotInput = z.infer<typeof bookSlotSchema>;
 export type CancelAppointmentInput = z.infer<typeof cancelAppointmentSchema>;
 export type TransitionStatusInput = z.infer<typeof transitionStatusSchema>;
 export type AddNoteInput = z.infer<typeof addNoteSchema>;
+export type EditNoteInput = z.infer<typeof editNoteSchema>;
 export type AssignSupportingProviderInput = z.infer<typeof assignSupportingProviderSchema>;
 export type RemoveSupportingProviderInput = z.infer<typeof removeSupportingProviderSchema>;
 export type DismissAlertInput = z.infer<typeof dismissAlertSchema>;
 export type ArchiveSlotInput = z.infer<typeof archiveSlotSchema>;
+export type RestoreSlotInput = z.infer<typeof restoreSlotSchema>;
+export type EditSlotInput = z.infer<typeof editSlotSchema>;
+export type ReassignProviderInput = z.infer<typeof reassignProviderSchema>;
 export type PatientInput = z.infer<typeof patientSchema>;
 export type GenerateAvailabilityInput = z.infer<typeof generateAvailabilitySchema>;
 export type AppointmentsQueryInput = z.infer<typeof appointmentsQuerySchema>;

@@ -122,3 +122,58 @@ export function recordSlotArchived(input: {
     actorId: input.actorId,
   });
 }
+
+export function recordSlotRestored(input: {
+  appointmentId: string;
+  actorId: string;
+}): Promise<void> {
+  return recordAuditEvent({
+    appointmentId: input.appointmentId,
+    eventType: 'SLOT_RESTORED',
+    actorId: input.actorId,
+  });
+}
+
+export function recordSlotEdited(input: {
+  appointmentId: string;
+  actorId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  return recordAuditEvent({
+    appointmentId: input.appointmentId,
+    eventType: 'SLOT_EDITED',
+    actorId: input.actorId,
+    metadata: input.metadata,
+  });
+}
+
+export function recordNoteEdited(input: {
+  appointmentId: string;
+  actorId: string;
+  noteId: string;
+}): Promise<void> {
+  return recordAuditEvent({
+    appointmentId: input.appointmentId,
+    eventType: 'NOTE_EDITED',
+    actorId: input.actorId,
+    noteId: input.noteId,
+  });
+}
+
+export function recordProviderReassigned(input: {
+  appointmentId: string;
+  actorId: string;
+  oldProviderId: string;
+  newProviderId: string;
+}): Promise<void> {
+  return recordAuditEvent({
+    appointmentId: input.appointmentId,
+    eventType: 'PROVIDER_REASSIGNED',
+    actorId: input.actorId,
+    supportingProviderId: input.newProviderId,
+    metadata: {
+      oldProviderId: input.oldProviderId,
+      newProviderId: input.newProviderId,
+    },
+  });
+}

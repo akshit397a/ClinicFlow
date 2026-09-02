@@ -1,17 +1,22 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { addDays } from 'date-fns';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { prisma } from '@/lib/prisma';
 import { toErrorMessage } from '@/lib/utils/errors';
 import { fail } from '@/lib/utils/result';
 import { canManageAvailability } from '@/lib/appointments/permissions';
 import { validateGenerateAvailability } from '@/lib/availability/validators';
-import { generateSlots } from '@/lib/availability/generation';
+import {
+  generateSlots,
+  hasCollision,
+  type ExistingTimeWindow,
+} from '@/lib/availability/generation';
 import { recordSlotCreated } from '@/lib/audit/events';
 
 export type GenerateAvailabilityResult =
-  | { ok: true; created: number }
+  | { ok: true; created: number; skipped: number }
   | { ok: false; error: string };
 
 export async function generateAvailabilityAction(
@@ -40,7 +45,37 @@ export async function generateAvailabilityAction(
   }
 
   try {
+    // Query existing appointments and slots in this date range to detect collisions
+    const existingRows = await prisma.appointment.findMany({
+      where: {
+        providerId: rule.providerId,
+        scheduledStart: {
+          gte: rule.startDate,
+          lt: addDays(rule.endDate, 1),
+        },
+        archivedAt: null,
+      },
+      select: {
+        scheduledStart: true,
+        durationMinutes: true,
+      },
+    });
+
+    const existingWindows: ExistingTimeWindow[] = existingRows.map((r) => ({
+      scheduledStart: r.scheduledStart,
+      durationMinutes: r.durationMinutes,
+    }));
+
+    let createdCount = 0;
+    let skippedCount = 0;
+
     for (const slot of slots) {
+      // Check collision with existing bookings/slots
+      if (hasCollision(slot, existingWindows)) {
+        skippedCount++;
+        continue;
+      }
+
       const created = await prisma.appointment.create({
         data: {
           providerId: slot.provider_id,
@@ -50,13 +85,21 @@ export async function generateAvailabilityAction(
           status: null,
         },
       });
+
+      // Track newly created slot in memory to prevent collision within the same batch
+      existingWindows.push({
+        scheduledStart: created.scheduledStart,
+        durationMinutes: created.durationMinutes,
+      });
+
       await recordSlotCreated({ appointmentId: created.id, actorId: user.id });
+      createdCount++;
     }
 
     revalidatePath('/');
     revalidatePath('/schedule');
     revalidatePath('/appointments');
-    return { ok: true, created: slots.length };
+    return { ok: true, created: createdCount, skipped: skippedCount };
   } catch (error) {
     return fail(toErrorMessage(error));
   }

@@ -14,8 +14,12 @@ export type AuditEventType =
   | 'SUPPORTING_PROVIDER_REMOVED'
   | 'CANCELLED'
   | 'NOTE_ADDED'
+  | 'NOTE_EDITED'
   | 'SLOT_CREATED'
-  | 'SLOT_ARCHIVED';
+  | 'SLOT_ARCHIVED'
+  | 'SLOT_RESTORED'
+  | 'SLOT_EDITED'
+  | 'PROVIDER_REASSIGNED';
 
 export interface Profile {
   id: string;

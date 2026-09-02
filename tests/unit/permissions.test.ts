@@ -4,7 +4,9 @@ import {
   canBookSlot,
   canCancel,
   canDismissAlert,
+  canEditNote,
   canManageAvailability,
+  canReassignProvider,
   canTransitionStatus,
   isFrontDesk,
 } from '@/lib/appointments/permissions';
@@ -75,6 +77,17 @@ describe('appointment permissions', () => {
     expect(canManageAvailability(frontDesk)).toBe(true);
     expect(canManageAvailability(provider, slot)).toBe(true);
     expect(canManageAvailability(otherProvider, slot)).toBe(false);
+  });
+
+  it('only front desk can reassign appointments between providers', () => {
+    expect(canReassignProvider(frontDesk)).toBe(true);
+    expect(canReassignProvider(provider)).toBe(false);
+  });
+
+  it('only the author provider can edit a visit note', () => {
+    expect(canEditNote(provider, provider.id)).toBe(true);
+    expect(canEditNote(otherProvider, provider.id)).toBe(false);
+    expect(canEditNote(frontDesk, provider.id)).toBe(false);
   });
 
   it('isFrontDesk checks the role', () => {

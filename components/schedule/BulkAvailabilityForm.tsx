@@ -56,7 +56,14 @@ export function BulkAvailabilityForm({ providers, defaultProviderId }: Props) {
         gapMinutes,
       });
       if (result.ok) {
-        setMessage({ ok: true, text: `Created ${result.created} slots.` });
+        const skippedMsg =
+          result.skipped > 0
+            ? `, skipped ${result.skipped} slot(s) colliding with existing bookings`
+            : '';
+        setMessage({
+          ok: true,
+          text: `Successfully created ${result.created} slot(s)${skippedMsg}.`,
+        });
         router.refresh();
       } else {
         setMessage({ ok: false, text: result.error });

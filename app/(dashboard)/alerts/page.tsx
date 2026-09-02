@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { getUnconfirmedAlerts } from '@/lib/alerts/queries';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -6,8 +7,11 @@ import { formatDateTime } from '@/lib/utils/dates';
 
 export default async function AlertsPage() {
   const user = await requireAuth();
+  if (user.profile.role !== 'front_desk') {
+    redirect('/');
+  }
   const alerts = await getUnconfirmedAlerts();
-  const canDismiss = user.profile.role === 'front_desk';
+  const canDismiss = true;
 
   return (
     <div className="space-y-6">

@@ -75,3 +75,20 @@ export function canManageAvailability(
   if (isFrontDesk(user)) return true;
   return isProvider(user) && (appointment === undefined || ownsAppointment(user, appointment));
 }
+
+/**
+ * Reassigning appointments between providers:
+ * Requirement: Front-desk staff can reassign appointments between providers.
+ * Providers cannot reassign an appointment away from themselves.
+ */
+export function canReassignProvider(user: Profile): boolean {
+  return isFrontDesk(user);
+}
+
+/**
+ * Visit notes editing:
+ * Requirement: Visit notes can be added and edited by the provider who wrote them.
+ */
+export function canEditNote(user: Profile, noteAuthorProviderId: string): boolean {
+  return isProvider(user) && user.id === noteAuthorProviderId;
+}

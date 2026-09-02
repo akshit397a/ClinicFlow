@@ -28,7 +28,7 @@ function buildHref(current: Record<string, string | string[] | undefined>, page:
 }
 
 export default async function AppointmentsPage({ searchParams }: Props) {
-  await requireAuth();
+  const user = await requireAuth();
   const raw = await searchParams;
 
   const parsed = appointmentsQuerySchema.safeParse({
@@ -37,12 +37,17 @@ export default async function AppointmentsPage({ searchParams }: Props) {
     search: single(raw.search) ?? undefined,
     status: single(raw.status) ?? undefined,
     providerId: single(raw.providerId) ?? undefined,
+    from: single(raw.from) ?? undefined,
+    to: single(raw.to) ?? undefined,
     sortBy: single(raw.sortBy) ?? undefined,
     sortDir: single(raw.sortDir) ?? undefined,
   });
   const query = parsed.success ? parsed.data : appointmentsQuerySchema.parse({});
 
-  const [page, providers] = await Promise.all([listAppointments(query), listProviders()]);
+  const [page, providers] = await Promise.all([
+    listAppointments(query, user.profile),
+    listProviders(),
+  ]);
 
   return (
     <div className="space-y-6">

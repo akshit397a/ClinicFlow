@@ -63,6 +63,33 @@ export function generateSlots(input: GenerateAvailabilityInput): SlotToCreate[] 
   return slots;
 }
 
+export interface ExistingTimeWindow {
+  scheduledStart: Date | string;
+  durationMinutes: number;
+}
+
+/**
+ * Pure helper: checks if a candidate slot collides with any existing booking/slot.
+ * Returns true if there is an overlap: slotStart < existingEnd && slotEnd > existingStart.
+ */
+export function hasCollision(
+  slot: { scheduled_start: string; duration_minutes: number },
+  existing: ExistingTimeWindow[],
+): boolean {
+  const slotStart = new Date(slot.scheduled_start).getTime();
+  const slotEnd = slotStart + slot.duration_minutes * 60_000;
+
+  for (const e of existing) {
+    const exStart = new Date(e.scheduledStart).getTime();
+    const exEnd = exStart + e.durationMinutes * 60_000;
+    if (slotStart < exEnd && slotEnd > exStart) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
 export function describeRule(input: GenerateAvailabilityInput): string {
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const days = input.weekdays.map((d) => dayNames[d - 1]).join(', ');

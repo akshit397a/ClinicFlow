@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateSlots } from '@/lib/availability/generation';
+import { generateSlots, hasCollision } from '@/lib/availability/generation';
 import type { GenerateAvailabilityInput } from '@/lib/validation/schemas';
 
 const providerId = '11111111-1111-1111-1111-111111111111';
@@ -54,5 +54,48 @@ describe('generateSlots', () => {
 
   it('returns an empty array for an empty weekday set', () => {
     expect(generateSlots(baseInput({ weekdays: [] }))).toHaveLength(0);
+  });
+});
+
+describe('hasCollision', () => {
+  it('detects overlapping slots', () => {
+    const existing = [
+      {
+        scheduledStart: new Date(2026, 8, 1, 9, 0, 0, 0),
+        durationMinutes: 30,
+      },
+    ];
+
+    // Exactly same time: collision
+    expect(
+      hasCollision(
+        { scheduled_start: new Date(2026, 8, 1, 9, 0, 0, 0).toISOString(), duration_minutes: 30 },
+        existing,
+      ),
+    ).toBe(true);
+
+    // Overlapping 15 mins: collision
+    expect(
+      hasCollision(
+        { scheduled_start: new Date(2026, 8, 1, 9, 15, 0, 0).toISOString(), duration_minutes: 30 },
+        existing,
+      ),
+    ).toBe(true);
+
+    // Immediately after (09:30): NO collision
+    expect(
+      hasCollision(
+        { scheduled_start: new Date(2026, 8, 1, 9, 30, 0, 0).toISOString(), duration_minutes: 30 },
+        existing,
+      ),
+    ).toBe(false);
+
+    // Immediately before (08:30 - 09:00): NO collision
+    expect(
+      hasCollision(
+        { scheduled_start: new Date(2026, 8, 1, 8, 30, 0, 0).toISOString(), duration_minutes: 30 },
+        existing,
+      ),
+    ).toBe(false);
   });
 });

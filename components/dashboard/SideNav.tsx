@@ -60,12 +60,23 @@ const NAV_LINKS = [
   },
 ];
 
-export function SideNav() {
+interface SideNavProps {
+  role?: 'front_desk' | 'provider';
+}
+
+export function SideNav({ role = 'front_desk' }: SideNavProps) {
   const pathname = usePathname();
+
+  const visibleLinks = NAV_LINKS.filter((link) => {
+    if (role === 'provider') {
+      if (link.href === '/providers' || link.href === '/alerts') return false;
+    }
+    return true;
+  });
 
   return (
     <nav className="flex-1 p-3 space-y-0.5">
-      {NAV_LINKS.map((link) => {
+      {visibleLinks.map((link) => {
         const active =
           link.href === '/'
             ? pathname === '/'

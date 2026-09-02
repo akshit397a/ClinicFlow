@@ -47,7 +47,7 @@ export default async function DashboardLayout({
         </div>
 
         {/* Navigation */}
-        <SideNav />
+        <SideNav role={user.profile.role} />
 
         {/* User Footer */}
         <div className="border-t border-[#f3f4f6] p-3 mt-auto">

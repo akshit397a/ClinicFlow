@@ -12,6 +12,7 @@ import { addDaysLocal, startOfDayLocal } from '@/lib/utils/dates';
 
 export async function listAppointments(
   input: AppointmentsQueryInput,
+  currentUser?: Profile,
 ): Promise<Page<AppointmentListItem>> {
   const where: any = {};
 
@@ -25,15 +26,31 @@ export async function listAppointments(
     where.archivedAt = null;
   }
 
-  if (input.providerId) {
+  // Enforce server-side provider scoping:
+  // Providers can only see appointments where they are primary or supporting provider.
+  if (currentUser?.role === 'provider') {
+    where.OR = [
+      { providerId: currentUser.id },
+      { supportingProviders: { some: { providerId: currentUser.id } } },
+    ];
+  } else if (input.providerId) {
     where.providerId = input.providerId;
   }
 
   if (input.search) {
-    where.OR = [
+    const searchFilter = [
       { patient: { fullName: { contains: input.search, mode: 'insensitive' } } },
       { provider: { fullName: { contains: input.search, mode: 'insensitive' } } },
     ];
+    if (where.OR) {
+      where.AND = [
+        { OR: where.OR },
+        { OR: searchFilter },
+      ];
+      delete where.OR;
+    } else {
+      where.OR = searchFilter;
+    }
   }
 
   if (input.from || input.to) {
@@ -49,6 +66,8 @@ export async function listAppointments(
     orderBy.status = input.sortDir;
   } else if (input.sortBy === 'created_at') {
     orderBy.createdAt = input.sortDir;
+  } else if (input.sortBy === 'provider') {
+    orderBy.provider = { fullName: input.sortDir };
   } else {
     orderBy.scheduledStart = 'asc';
   }

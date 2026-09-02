@@ -12,7 +12,7 @@ export default async function AuthLayout({
   children: React.ReactNode;
 }) {
   const user = await getCurrentUser();
-  if (user) redirect('/appointments');
+  if (user) redirect('/');
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-4">
