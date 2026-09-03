@@ -43,15 +43,15 @@ export function EvilAnalyticsChart({ series }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Metric Quick Badges */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 text-xs font-semibold text-[#111111] shadow-2xs">
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 text-xs font-semibold text-[#111111] shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#d1d5db]">
             <span className="h-2 w-2 rounded-full bg-[#111111]" />
-            <span>Completed: {totalCompleted}</span>
+            <span>Completed: <span className="tabular-nums">{totalCompleted}</span></span>
             <span className="text-[10px] font-medium text-emerald-600">({completionRate}%)</span>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 text-xs font-semibold text-[#111111] shadow-2xs">
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1 text-xs font-semibold text-[#111111] shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#d1d5db]">
             <span className="h-2 w-2 rounded-full bg-[#3b82f6]" />
-            <span>No-shows: {totalNoShows}</span>
+            <span>No-shows: <span className="tabular-nums">{totalNoShows}</span></span>
           </div>
         </div>
 
@@ -62,10 +62,10 @@ export function EvilAnalyticsChart({ series }: Props) {
             <button
               type="button"
               onClick={() => setChartMode('bar')}
-              className={`px-2.5 py-1 rounded-md transition-all font-medium cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-all duration-200 ease-out font-medium cursor-pointer ${
                 chartMode === 'bar'
-                  ? 'bg-white text-[#111111] shadow-2xs'
-                  : 'text-[#6b7280] hover:text-[#111111]'
+                  ? 'bg-white text-[#111111] shadow-2xs font-semibold'
+                  : 'text-[#6b7280] hover:text-[#111111] hover:bg-white/50'
               }`}
             >
               Grouped Bars
@@ -73,10 +73,10 @@ export function EvilAnalyticsChart({ series }: Props) {
             <button
               type="button"
               onClick={() => setChartMode('area')}
-              className={`px-2.5 py-1 rounded-md transition-all font-medium cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-all duration-200 ease-out font-medium cursor-pointer ${
                 chartMode === 'area'
-                  ? 'bg-white text-[#111111] shadow-2xs'
-                  : 'text-[#6b7280] hover:text-[#111111]'
+                  ? 'bg-white text-[#111111] shadow-2xs font-semibold'
+                  : 'text-[#6b7280] hover:text-[#111111] hover:bg-white/50'
               }`}
             >
               Smooth Wave
@@ -88,10 +88,10 @@ export function EvilAnalyticsChart({ series }: Props) {
             <button
               type="button"
               onClick={() => setFilter('all')}
-              className={`px-2 py-1 rounded-md transition-all font-medium cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-all duration-200 ease-out font-medium cursor-pointer ${
                 filter === 'all'
-                  ? 'bg-white text-[#111111] shadow-2xs'
-                  : 'text-[#6b7280] hover:text-[#111111]'
+                  ? 'bg-white text-[#111111] shadow-2xs font-semibold'
+                  : 'text-[#6b7280] hover:text-[#111111] hover:bg-white/50'
               }`}
             >
               All
@@ -99,10 +99,10 @@ export function EvilAnalyticsChart({ series }: Props) {
             <button
               type="button"
               onClick={() => setFilter('completed')}
-              className={`px-2 py-1 rounded-md transition-all font-medium cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-all duration-200 ease-out font-medium cursor-pointer ${
                 filter === 'completed'
-                  ? 'bg-white text-[#111111] shadow-2xs'
-                  : 'text-[#6b7280] hover:text-[#111111]'
+                  ? 'bg-white text-[#111111] shadow-2xs font-semibold'
+                  : 'text-[#6b7280] hover:text-[#111111] hover:bg-white/50'
               }`}
             >
               Completed
@@ -110,13 +110,13 @@ export function EvilAnalyticsChart({ series }: Props) {
             <button
               type="button"
               onClick={() => setFilter('no_shows')}
-              className={`px-2 py-1 rounded-md transition-all font-medium cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-all duration-200 ease-out font-medium cursor-pointer ${
                 filter === 'no_shows'
-                  ? 'bg-white text-[#111111] shadow-2xs'
-                  : 'text-[#6b7280] hover:text-[#111111]'
+                  ? 'bg-white text-[#111111] shadow-2xs font-semibold'
+                  : 'text-[#6b7280] hover:text-[#111111] hover:bg-white/50'
               }`}
             >
-              No-Shows
+              No-shows
             </button>
           </div>
         </div>

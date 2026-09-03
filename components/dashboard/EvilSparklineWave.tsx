@@ -28,12 +28,12 @@ export function EvilSparklineWave({
     <div className="flex flex-col justify-between h-full space-y-2">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-[#111111]">Monthly Volume</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-[#111111]">Monthly Volume</h3>
           <p className="text-xs text-[#6b7280] mt-0.5">Booked clinical consultations</p>
         </div>
 
         {/* Currency/Calendar Icon Bubble matching Modernize blue circle button */}
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3b82f6] text-white shadow-xs">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3b82f6] text-white shadow-xs transition-transform duration-200 ease-out hover:scale-110 hover:-rotate-3 cursor-pointer">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
           </svg>
@@ -41,7 +41,7 @@ export function EvilSparklineWave({
       </div>
 
       <div className="py-1">
-        <p className="text-3xl font-extrabold tracking-tight text-[#111111]">
+        <p className="text-3xl font-extrabold tracking-tight text-[#111111] tabular-nums">
           {totalAppointments}
         </p>
         <div className="flex items-center gap-1.5 mt-1">

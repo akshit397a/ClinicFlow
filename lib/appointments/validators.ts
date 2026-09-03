@@ -4,9 +4,21 @@ import type { AppointmentForPermission } from '@/lib/appointments/permissions';
 
 export type ValidationResult = { ok: true } | { ok: false; error: string };
 
-export function validateBooking(appointment: AppointmentForPermission): ValidationResult {
+export function validateBooking(
+  appointment: AppointmentForPermission,
+  now = new Date(),
+): ValidationResult {
   if (appointment.patient_id !== null || appointment.status !== null) {
     return { ok: false, error: 'This slot is already booked.' };
+  }
+  if (
+    appointment.scheduled_start &&
+    new Date(appointment.scheduled_start).getTime() < now.getTime()
+  ) {
+    return {
+      ok: false,
+      error: 'Cannot book an appointment slot that is in the past.',
+    };
   }
   return { ok: true };
 }

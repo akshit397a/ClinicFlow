@@ -48,12 +48,13 @@ export default async function PatientsPage({ searchParams }: Props) {
 
   const parsed = patientsQuerySchema.safeParse({
     page: single(raw.page) ?? 1,
-    pageSize: single(raw.pageSize) ?? 25,
+    pageSize: single(raw.pageSize) ?? 10,
     search: single(raw.search) ?? undefined,
   });
   const query = parsed.success ? parsed.data : patientsQuerySchema.parse({});
 
   const page = await listPatients(query);
+  const isFrontDesk = user.profile.role === 'front_desk';
 
   return (
     <div className="space-y-6">
@@ -62,14 +63,15 @@ export default async function PatientsPage({ searchParams }: Props) {
         <div>
           <h1 className="text-2xl font-bold text-[#111111] tracking-tight">Patients</h1>
           <p className="mt-1 text-sm text-[#6b7280]">
-            {page.total} patient{page.total === 1 ? '' : 's'} on record
+            {page.total} patient{page.total === 1 ? '' : 's'} registered in clinical directory (showing up to 10 per page)
           </p>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Patient list — takes 2/3 */}
-        <div className="space-y-4 lg:col-span-2">
+      {/* Role-responsive grid: 2-column layout for Front Desk (List + Add Form), full-width layout for Providers */}
+      <div className={isFrontDesk ? 'grid gap-6 lg:grid-cols-3' : 'w-full'}>
+        {/* Patient list container */}
+        <div className={`space-y-4 ${isFrontDesk ? 'lg:col-span-2' : 'w-full'}`}>
           {/* Search bar */}
           <form method="get" className="flex gap-2">
             <div className="relative flex-1">
@@ -80,21 +82,21 @@ export default async function PatientsPage({ searchParams }: Props) {
                 id="search"
                 name="search"
                 type="text"
-                placeholder="Search patients by name..."
+                placeholder="Search patients by name, email, or phone..."
                 defaultValue={query.search}
                 className="w-full rounded-lg border border-[#e5e7eb] bg-white pl-9 pr-3 py-2 text-sm text-[#111111] placeholder:text-[#9ca3af] outline-none focus:border-[#111111] focus:ring-2 focus:ring-[#111111]/10 transition-all"
               />
             </div>
             <button
               type="submit"
-              className="rounded-lg bg-[#111111] px-4 py-2 text-sm font-medium text-white hover:bg-[#242424] transition-colors"
+              className="rounded-lg bg-[#111111] px-4 py-2 text-sm font-medium text-white hover:bg-[#242424] transition-colors cursor-pointer"
             >
               Search
             </button>
           </form>
 
           {/* Patients table card */}
-          <Card>
+          <Card className="w-full">
             <CardBody className="p-0">
               {page.rows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -104,65 +106,104 @@ export default async function PatientsPage({ searchParams }: Props) {
                     </svg>
                   </div>
                   <p className="text-sm font-medium text-[#374151]">No patients found</p>
-                  <p className="mt-1 text-xs text-[#9ca3af]">Try a different search term</p>
+                  <p className="mt-1 text-xs text-[#9ca3af]">Try a different search term or clear the filter</p>
                 </div>
               ) : (
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#f3f4f6]">
-                      <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Patient</th>
-                      <th className="py-3 pr-5 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Email</th>
-                      <th className="py-3 pr-5 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">Phone</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {page.rows.map((patient, i) => (
-                      <tr
-                        key={patient.id}
-                        className="border-b border-[#f3f4f6] last:border-0 hover:bg-[#fafafa] transition-colors"
-                      >
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarColors[i % avatarColors.length]}`}>
-                              {getInitials(patient.full_name)}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[#f3f4f6] bg-[#f8f9fa]/50">
+                        <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">
+                          Patient
+                        </th>
+                        {!isFrontDesk && (
+                          <th className="py-3.5 px-4 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">
+                            Date of Birth
+                          </th>
+                        )}
+                        <th className="py-3.5 px-4 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">
+                          Contact Email
+                        </th>
+                        <th className="py-3.5 px-4 text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">
+                          Phone
+                        </th>
+                        <th className="py-3.5 pr-5 text-right text-xs font-semibold uppercase tracking-wider text-[#9ca3af]">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {page.rows.map((patient, i) => (
+                        <tr
+                          key={patient.id}
+                          className="border-b border-[#f3f4f6] last:border-0 hover:bg-[#fafafa] transition-colors"
+                        >
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                                  avatarColors[i % avatarColors.length]
+                                }`}
+                              >
+                                {getInitials(patient.full_name)}
+                              </div>
+                              <Link
+                                href={`/patients/${patient.id}`}
+                                className="font-semibold text-[#111111] hover:underline"
+                              >
+                                {patient.full_name}
+                              </Link>
                             </div>
+                          </td>
+                          {!isFrontDesk && (
+                            <td className="py-3.5 px-4 text-[#6b7280] tabular-nums">
+                              {patient.date_of_birth ?? '—'}
+                            </td>
+                          )}
+                          <td className="py-3.5 px-4 text-[#6b7280]">{patient.email ?? '—'}</td>
+                          <td className="py-3.5 px-4 text-[#6b7280] tabular-nums">{patient.phone ?? '—'}</td>
+                          <td className="py-3.5 pr-5 text-right">
                             <Link
                               href={`/patients/${patient.id}`}
-                              className="font-medium text-[#111111] hover:underline"
+                              className="text-xs font-semibold text-[#111111] hover:underline inline-flex items-center gap-0.5"
                             >
-                              {patient.full_name}
+                              <span>View History</span>
+                              <span aria-hidden="true">→</span>
                             </Link>
-                          </div>
-                        </td>
-                        <td className="py-3 pr-5 text-[#6b7280]">{patient.email ?? '—'}</td>
-                        <td className="py-3 pr-5 text-[#6b7280]">{patient.phone ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </CardBody>
           </Card>
 
+          {/* Pagination Controls — capped at 10 items per page */}
           {page.totalPages > 1 && (
-            <Pagination
-              page={page.page}
-              totalPages={page.totalPages}
-              buildHref={(p) => buildHref(raw, p)}
-            />
+            <div className="pt-2">
+              <Pagination
+                page={page.page}
+                totalPages={page.totalPages}
+                buildHref={(p) => buildHref(raw, p)}
+              />
+            </div>
           )}
         </div>
 
-        {/* Add patient form — only front desk */}
-        {user.profile.role === 'front_desk' && (
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>Add new patient</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <PatientForm mode="create" />
-            </CardBody>
-          </Card>
+        {/* Add patient form — only visible to front desk */}
+        {isFrontDesk && (
+          <div className="lg:col-span-1">
+            <Card className="h-fit sticky top-6">
+              <CardHeader>
+                <CardTitle>Add New Patient</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <PatientForm mode="create" />
+              </CardBody>
+            </Card>
+          </div>
         )}
       </div>
     </div>

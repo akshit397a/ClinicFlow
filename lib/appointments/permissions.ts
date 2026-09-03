@@ -9,6 +9,7 @@ export interface AppointmentForPermission {
   provider_id: string;
   patient_id: string | null;
   status: AppointmentStatus | null;
+  scheduled_start?: string | Date;
 }
 
 export function isFrontDesk(user: Profile): boolean {

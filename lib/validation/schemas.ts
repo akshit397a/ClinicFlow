@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-export const uuidSchema = z.string().uuid();
+export const uuidSchema = z.string().uuid('Invalid UUID identifier.');
+
+export const userRoleSchema = z.enum(['front_desk', 'provider']);
 
 export const appointmentStatusSchema = z.enum([
   'requested',
@@ -12,8 +14,8 @@ export const appointmentStatusSchema = z.enum([
 ]);
 
 export const weekdaysSchema = z
-  .array(z.number().int().min(1).max(7))
-  .min(1)
+  .array(z.number().int().min(1, 'Day must be 1 (Mon) to 7 (Sun).').max(7, 'Day must be 1 (Mon) to 7 (Sun).'))
+  .min(1, 'Please select at least one weekday.')
   .max(7);
 
 export const bookSlotSchema = z.object({
@@ -27,7 +29,7 @@ export const cancelAppointmentSchema = z.object({
     .string()
     .trim()
     .min(3, 'Please provide a cancellation reason (at least 3 characters).')
-    .max(500),
+    .max(500, 'Cancellation reason cannot exceed 500 characters.'),
 });
 
 export const transitionStatusSchema = z.object({
@@ -37,7 +39,20 @@ export const transitionStatusSchema = z.object({
 
 export const addNoteSchema = z.object({
   appointmentId: uuidSchema,
-  content: z.string().trim().min(1).max(5000),
+  content: z
+    .string()
+    .trim()
+    .min(1, 'Visit note cannot be empty.')
+    .max(5000, 'Visit note cannot exceed 5,000 characters.'),
+});
+
+export const editNoteSchema = z.object({
+  noteId: uuidSchema,
+  content: z
+    .string()
+    .trim()
+    .min(1, 'Visit note cannot be empty.')
+    .max(5000, 'Visit note cannot exceed 5,000 characters.'),
 });
 
 export const assignSupportingProviderSchema = z.object({
@@ -62,32 +77,54 @@ export const restoreSlotSchema = z.object({
   appointmentId: uuidSchema,
 });
 
-export const editSlotSchema = z.object({
-  appointmentId: uuidSchema,
-  scheduledStart: z.coerce.date(),
-  durationMinutes: z.number().int().min(5).max(480),
-});
+export const editSlotSchema = z
+  .object({
+    appointmentId: uuidSchema,
+    scheduledStart: z.coerce.date(),
+    durationMinutes: z
+      .number()
+      .int()
+      .min(5, 'Duration must be at least 5 minutes.')
+      .max(480, 'Duration cannot exceed 8 hours.'),
+  })
+  .refine((v) => v.scheduledStart.getTime() > Date.now() - 5 * 60 * 1000, {
+    message: 'Slot scheduled start time cannot be in the past.',
+    path: ['scheduledStart'],
+  });
 
 export const reassignProviderSchema = z.object({
   appointmentId: uuidSchema,
   newProviderId: uuidSchema,
 });
 
-export const editNoteSchema = z.object({
-  noteId: uuidSchema,
-  content: z.string().trim().min(1).max(5000),
-});
+export const patientSchema = z
+  .object({
+    fullName: z
+      .string()
+      .trim()
+      .min(2, 'Patient full name must be at least 2 characters.')
+      .max(200, 'Patient full name cannot exceed 200 characters.'),
+    email: z
+      .string()
+      .trim()
+      .email('Please enter a valid email address.')
+      .max(320)
+      .nullable()
+      .optional()
+      .or(z.literal('')),
+    phone: z.string().trim().max(50).nullable().optional(),
+    dateOfBirth: z.coerce.date().nullable().optional(),
+  })
+  .refine((v) => !v.dateOfBirth || v.dateOfBirth <= new Date(), {
+    message: 'Date of birth cannot be in the future.',
+    path: ['dateOfBirth'],
+  });
 
-export const patientSchema = z.object({
-  fullName: z.string().trim().min(1).max(200),
-  email: z.string().trim().email().max(320).nullable().optional(),
-  phone: z.string().trim().max(50).nullable().optional(),
-  dateOfBirth: z.coerce.date().nullable().optional(),
-});
-
-export const updatePatientSchema = patientSchema.extend({
-  patientId: uuidSchema,
-});
+export const updatePatientSchema = patientSchema.and(
+  z.object({
+    patientId: uuidSchema,
+  }),
+);
 
 export const generateAvailabilitySchema = z
   .object({
@@ -97,8 +134,8 @@ export const generateAvailabilitySchema = z
     weekdays: weekdaysSchema,
     startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM 24h time.'),
     endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM 24h time.'),
-    durationMinutes: z.number().int().min(5).max(480),
-    gapMinutes: z.number().int().min(0).max(120).default(0),
+    durationMinutes: z.number().int().min(5, 'Duration must be at least 5 minutes.').max(480),
+    gapMinutes: z.number().int().min(0, 'Gap cannot be negative.').max(120).default(0),
   })
   .refine((v) => v.startDate <= v.endDate, {
     message: 'Start date must be on or before end date.',
@@ -109,25 +146,30 @@ export const generateAvailabilitySchema = z
     path: ['endTime'],
   });
 
-export const appointmentsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(100).default(20),
-  search: z.string().trim().max(200).optional(),
-  status: z
-    .union([appointmentStatusSchema, z.literal('available')])
-    .optional(),
-  providerId: uuidSchema.optional(),
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
-  sortBy: z
-    .enum(['scheduled_start', 'created_at', 'status', 'provider'])
-    .default('scheduled_start'),
-  sortDir: z.enum(['asc', 'desc']).default('asc'),
-});
+export const appointmentsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20),
+    search: z.string().trim().max(200).optional(),
+    status: z
+      .union([appointmentStatusSchema, z.literal('available')])
+      .optional(),
+    providerId: uuidSchema.optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+    sortBy: z
+      .enum(['scheduled_start', 'created_at', 'status', 'provider'])
+      .default('scheduled_start'),
+    sortDir: z.enum(['asc', 'desc']).default('asc'),
+  })
+  .refine((v) => !v.from || !v.to || v.from <= v.to, {
+    message: 'From date must be on or before To date.',
+    path: ['to'],
+  });
 
 export const patientsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(100).default(20),
+  pageSize: z.coerce.number().int().positive().max(100).default(10),
   search: z.string().trim().max(200).optional(),
 });
 

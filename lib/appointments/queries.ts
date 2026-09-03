@@ -2,8 +2,6 @@ import type {
   AppointmentListItem,
   AppointmentWithRelations,
   Profile,
-  VisitNoteWithAuthor,
-  AuditEventWithActor,
 } from '@/lib/db/types';
 import type { AppointmentsQueryInput } from '@/lib/validation/schemas';
 import { prisma } from '@/lib/prisma';

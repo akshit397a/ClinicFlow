@@ -18,6 +18,18 @@ describe('appointment validators', () => {
     expect(validateBooking(requested).ok).toBe(false);
   });
 
+  it('rejects booking slots whose scheduled time is in the past', () => {
+    const pastSlot = { ...slot, scheduled_start: new Date(Date.now() - 3600_000).toISOString() };
+    const futureSlot = { ...slot, scheduled_start: new Date(Date.now() + 3600_000).toISOString() };
+
+    const pastResult = validateBooking(pastSlot);
+    expect(pastResult.ok).toBe(false);
+    expect((pastResult as any).error).toContain('in the past');
+
+    const futureResult = validateBooking(futureSlot);
+    expect(futureResult.ok).toBe(true);
+  });
+
   it('validates status transitions', () => {
     expect(validateTransition('requested', 'confirmed').ok).toBe(true);
     expect(validateTransition('confirmed', 'checked_in').ok).toBe(true);

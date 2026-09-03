@@ -29,6 +29,12 @@ export async function generateAvailabilityAction(
 
   const rule = validation.data;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (rule.endDate < today) {
+    return fail('Cannot generate availability slots for dates in the past.');
+  }
+
   if (
     user.profile.role === 'provider' &&
     rule.providerId !== user.profile.id

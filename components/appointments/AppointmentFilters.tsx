@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { AppointmentsQueryInput } from '@/lib/validation/schemas';
 import { APPOINTMENT_STATUSES } from '@/lib/appointments/status';
 import { Input, Select, Label } from '@/components/ui/fields';
@@ -109,12 +110,12 @@ export function AppointmentFilters({ providers, query }: Props) {
           >
             Apply filters
           </button>
-          <a
+          <Link
             href="/appointments"
             className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-xs font-medium text-[#6b7280] hover:text-[#111111] hover:bg-[#fafafa] transition-colors"
           >
             Reset
-          </a>
+          </Link>
         </div>
       </div>
     </form>

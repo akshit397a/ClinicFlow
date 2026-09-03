@@ -114,6 +114,22 @@ export async function bookSlotAction(input: BookSlotInput): Promise<ActionResult
   const bookingCheck = validateBooking(appointment);
   if (!bookingCheck.ok) return bookingCheck;
 
+  // Prevent double-booking the same patient for simultaneous appointments
+  const slotStart = new Date(appointment.scheduled_start);
+  const patientConflict = await prisma.appointment.findFirst({
+    where: {
+      patientId,
+      id: { not: appointmentId },
+      archivedAt: null,
+      status: { in: ['requested', 'confirmed', 'checked_in'] },
+      scheduledStart: slotStart,
+    },
+  });
+
+  if (patientConflict) {
+    return fail('This patient already has an active appointment scheduled at this exact time.');
+  }
+
   try {
     await prisma.appointment.update({
       where: { id: appointmentId },
@@ -229,6 +245,18 @@ export async function addNoteAction(input: AddNoteInput): Promise<ActionResult> 
   const appointment = await getAppointmentForAction(appointmentId);
   if (!appointment) return fail('Appointment not found.');
 
+  if (appointment.patient_id === null || appointment.status === null) {
+    return fail('Cannot add visit notes to an unbooked availability slot.');
+  }
+
+  if (appointment.status === 'cancelled') {
+    return fail('Cannot add visit notes to a cancelled appointment.');
+  }
+
+  if (appointment.status === 'requested') {
+    return fail('Cannot add visit notes before an appointment is confirmed.');
+  }
+
   const supporting = await getSupportingProviderIds(appointmentId);
   if (!canAddNote(user.profile, appointment, supporting)) {
     return fail('Only assigned providers can add notes.');
@@ -269,6 +297,14 @@ export async function assignSupportingProviderAction(
 
   if (!canAssignSupportingProvider(user.profile)) {
     return fail('Not authorized to assign supporting providers.');
+  }
+
+  if (appointment.patient_id === null || appointment.status === null) {
+    return fail('Cannot assign supporting providers to an unbooked slot.');
+  }
+
+  if (appointment.status === 'cancelled' || appointment.status === 'completed') {
+    return fail(`Cannot add supporting providers to a ${appointment.status} appointment.`);
   }
 
   if (appointment.provider_id === providerId) {
@@ -450,7 +486,7 @@ export async function editSlotAction(
 ): Promise<ActionResult> {
   const user = await requireAuth();
   const parsed = editSlotSchema.safeParse(input);
-  if (!parsed.success) return fail('Invalid slot edit details.');
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? 'Invalid slot edit details.');
 
   const { appointmentId, scheduledStart, durationMinutes } = parsed.data;
   const row = await prisma.appointment.findUnique({
@@ -503,6 +539,14 @@ export async function reassignProviderAction(
 
   if (!canReassignProvider(user.profile)) {
     return fail('Only front-desk staff can reassign appointments between providers.');
+  }
+
+  if (appointment.patient_id === null || appointment.status === null) {
+    return fail('Only booked appointments can be reassigned between providers.');
+  }
+
+  if (appointment.status === 'completed' || appointment.status === 'cancelled' || appointment.status === 'no_show') {
+    return fail(`Cannot reassign a ${appointment.status.replace('_', ' ')} appointment.`);
   }
 
   if (appointment.provider_id === newProviderId) {
