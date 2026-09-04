@@ -17,9 +17,9 @@ ClinicFlow is built as a cohesive full-stack web application designed without an
 
 | Tier | Primary Components | Core Responsibilities | Protocols & Communication |
 | :--- | :--- | :--- | :--- |
-| **🌐 Client Tier** | **Browser Application**<br>*(React 19 / Next.js Client)* | • Daily Schedule Calendar grid<br>• Appointment detail drawers & modals<br>• Patient search & multi-field filters<br>• Sub-80ms `<Link prefetch>` navigation | ⇄ **HTTP / RPC**: Dispatches Server Actions with typed JSON arguments; renders streamed React Server Components. |
-| **⚡ Server Tier** | **Next.js 15 App Router**<br>*(Vercel Serverless Lambdas)* | • React Server Components (zero-JS initial paint)<br>• Server Actions for all mutations<br>• Zod input validation & RBAC (`requireRole`)<br>• Route Handlers (CSV Schedule export) | ⇄ **Dual Database Connection**:<br>• *Reads:* User-session client (RLS applied)<br>• *Writes:* Service-role admin client (trusted) |
-| **🗄️ Database Tier** | **Supabase / PostgreSQL 15+**<br>*(Managed Cloud Instance)* | • Relational tables with strict foreign keys<br>• GiST exclusion constraint (`btree_gist`)<br>• Trigram search indexes (`pg_trgm`)<br>• Append-only legal audit log<br>• Supabase Auth engine & encrypted sessions | 🔒 **Storage Engine**: Enforces atomic transaction locks, range exclusions, and read-only RLS security policies. |
+| ** Client Tier** | **Browser Application**<br>*(React 19 / Next.js Client)* | • Daily Schedule Calendar grid<br>• Appointment detail drawers & modals<br>• Patient search & multi-field filters<br>• Sub-80ms `<Link prefetch>` navigation | ⇄ **HTTP / RPC**: Dispatches Server Actions with typed JSON arguments; renders streamed React Server Components. |
+| ** Server Tier** | **Next.js 15 App Router**<br>*(Vercel Serverless Lambdas)* | • React Server Components (zero-JS initial paint)<br>• Server Actions for all mutations<br>• Zod input validation & RBAC (`requireRole`)<br>• Route Handlers (CSV Schedule export) | ⇄ **Dual Database Connection**:<br>• *Reads:* User-session client (RLS applied)<br>• *Writes:* Service-role admin client (trusted) |
+| ** Database Tier** | **Supabase / PostgreSQL 15+**<br>*(Managed Cloud Instance)* | • Relational tables with strict foreign keys<br>• GiST exclusion constraint (`btree_gist`)<br>• Trigram search indexes (`pg_trgm`)<br>• Append-only legal audit log<br>• Supabase Auth engine & encrypted sessions | 🔒 **Storage Engine**: Enforces atomic transaction locks, range exclusions, and read-only RLS security policies. |
 
 > **Direct Data Flow Pipeline:**  
 > `[ Browser (React 19) ]` $\xleftrightarrow{\quad\text{Server Actions (HTTP POST)}\quad}$ `[ Next.js 15 Server Layer ]` $\xrightarrow[\text{Trusted Admin Writes}]{\text{Session Reads (RLS)}}$ `[ Supabase / PostgreSQL ]`
@@ -73,17 +73,17 @@ Let's trace a core operational workflow: **A Front Desk staff member books an op
 
 | Step | Action Stage | Actor / Layer | Technical Operation & Integrity Guard |
 | :---: | :--- | :--- | :--- |
-| **1** | **User Gesture** | 👤 Front Desk Staff | Clicks "Book Appointment" on Dr. Alice's 09:00 AM slot, selects patient Maya Rodriguez, and clicks Confirm. |
-| **2** | **Action Dispatch** | 🌐 Browser Client | Invokes `bookAppointmentAction({ appointmentId, patientId })` via an encrypted HTTP POST request. |
-| **3** | **Auth Check** | ⚡ Next.js Server | `requireAuth()` inspects incoming HTTP-only cookies and validates the Supabase JWT. Rejects if missing or expired. |
-| **4** | **RBAC Authorization** | ⚡ Next.js Server | `requireRole('front_desk')` asserts that the authenticated user possesses administrative scheduling authority. |
-| **5** | **Zod Validation** | ⚡ Next.js Server | Validates input parameters against `bookAppointmentSchema` (UUID format, non-empty values). |
-| **6** | **State Pre-check** | ⚡ Next.js Server | Queries slot to verify `patient_id IS NULL AND status IS NULL` (ensuring slot hasn't been claimed). |
-| **7** | **Database Mutation** | 🗄️ PostgreSQL | Updates row: `UPDATE appointments SET patient_id = $1, status = 'requested', updated_at = now()`. |
-| **8** | **Atomic Lock Check** | 🗄️ PostgreSQL | Storage engine atomically evaluates CHECK constraints and the GiST exclusion constraint (`appointments_no_overlap`). |
-| **9** | **Audit Trail Logging** | 🗄️ PostgreSQL | Appends row to `appointment_audit_events` with `event_type = 'STATUS_CHANGED'`, `actor_id`, and state snapshot. |
-| **10** | **Cache Invalidation** | ⚡ Next.js Server | Calls `revalidatePath('/schedule')` & `revalidatePath('/appointments')` to purge stale server caches. |
-| **11** | **UI State Refresh** | 🌐 Browser Client | Next.js streams updated Server Component payload; browser transitions slot into an active booked tile with a toast. |
+| **1** | **User Gesture** |  Front Desk Staff | Clicks "Book Appointment" on Dr. Alice's 09:00 AM slot, selects patient Maya Rodriguez, and clicks Confirm. |
+| **2** | **Action Dispatch** |  Browser Client | Invokes `bookAppointmentAction({ appointmentId, patientId })` via an encrypted HTTP POST request. |
+| **3** | **Auth Check** |  Next.js Server | `requireAuth()` inspects incoming HTTP-only cookies and validates the Supabase JWT. Rejects if missing or expired. |
+| **4** | **RBAC Authorization** |  Next.js Server | `requireRole('front_desk')` asserts that the authenticated user possesses administrative scheduling authority. |
+| **5** | **Zod Validation** |  Next.js Server | Validates input parameters against `bookAppointmentSchema` (UUID format, non-empty values). |
+| **6** | **State Pre-check** |  Next.js Server | Queries slot to verify `patient_id IS NULL AND status IS NULL` (ensuring slot hasn't been claimed). |
+| **7** | **Database Mutation** |  PostgreSQL | Updates row: `UPDATE appointments SET patient_id = $1, status = 'requested', updated_at = now()`. |
+| **8** | **Atomic Lock Check** |  PostgreSQL | Storage engine atomically evaluates CHECK constraints and the GiST exclusion constraint (`appointments_no_overlap`). |
+| **9** | **Audit Trail Logging** |  PostgreSQL | Appends row to `appointment_audit_events` with `event_type = 'STATUS_CHANGED'`, `actor_id`, and state snapshot. |
+| **10** | **Cache Invalidation** |  Next.js Server | Calls `revalidatePath('/schedule')` & `revalidatePath('/appointments')` to purge stale server caches. |
+| **11** | **UI State Refresh** |  Browser Client | Next.js streams updated Server Component payload; browser transitions slot into an active booked tile with a toast. |
 
 
 ### Detailed Step-by-Step Breakdown:
