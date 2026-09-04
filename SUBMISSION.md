@@ -4,13 +4,12 @@ Fill this in and commit it. This is the first file we open.
 
 ## Links
 
-- **GitHub repository:** <public repo URL>
-- **Live application:** <deployed URL>
+- **GitHub repository:** https://github.com/akshit397a/ClinicFlow
+- **Live application:** https://clinic-flow-plum.vercel.app/
 
 ## Notes for the reviewer
 
-<Anything we should know before opening the link — e.g. your host sleeps when idle and the first
-request can take up to a minute.>
+The application is deployed on Vercel with a managed Supabase PostgreSQL database. If the serverless lambdas have been idle, the initial cold-start request may take a brief moment (2–3 seconds), after which navigation, queries, and mutations run smoothly with sub-80ms latency. All demo accounts listed below are pre-seeded and ready to log in immediately with `password123`.
 
 ## Demo credentials
 

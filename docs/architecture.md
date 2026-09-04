@@ -22,7 +22,7 @@ ClinicFlow is built as a cohesive full-stack web application designed without an
 | **🗄️ Database Tier** | **Supabase / PostgreSQL 15+**<br>*(Managed Cloud Instance)* | • Relational tables with strict foreign keys<br>• GiST exclusion constraint (`btree_gist`)<br>• Trigram search indexes (`pg_trgm`)<br>• Append-only legal audit log<br>• Supabase Auth engine & encrypted sessions | 🔒 **Storage Engine**: Enforces atomic transaction locks, range exclusions, and read-only RLS security policies. |
 
 > **Direct Data Flow Pipeline:**  
-> `[ Browser (React 19) ]` $\xleftrightarrow{\quad\text{Server Actions (HTTP POST)}\quad}$ `[ Next.js 15 Server Layer ]` $\xrightarrow[\text{Trusted Admin Writes}]{\text{Session Reads (RLS)}}$ `[ Supabase / PostgreSQL ]`
+> `Browser (React 19)` ⟵ *(HTTP POST / Server Actions)* ⟶ `Next.js 15 Server Layer` ⟵ *(Session Reads with RLS / Trusted Admin Writes)* ⟶ `Supabase / PostgreSQL`
 
 
 ### The Moving Pieces
@@ -45,8 +45,8 @@ ClinicFlow is built as a cohesive full-stack web application designed without an
 
 ### How They Talk to Each Other
 
-- **Browser $\longleftrightarrow$ Next.js Server:** The browser communicates with Server Components and Server Actions over standard HTTPS requests using Next.js's built-in RPC protocol. Fast navigation is achieved via `<Link prefetch={true} />`, which fetches server components ahead of time.
-- **Next.js Server $\longleftrightarrow$ PostgreSQL:** The server connects to PostgreSQL using two distinct patterns:
+- **Browser ⇄ Next.js Server:** The browser communicates with Server Components and Server Actions over standard HTTPS requests using Next.js's built-in RPC protocol. Fast navigation is achieved via `<Link prefetch={true} />`, which fetches server components ahead of time.
+- **Next.js Server ⇄ PostgreSQL:** The server connects to PostgreSQL using two distinct patterns:
   1. *For Data Reads:* It uses a session-bound client (`lib/supabase/server.ts`) passing the user's auth token. This ensures all database reads strictly obey Row-Level Security (RLS).
   2. *For Data Mutations:* It uses the service-role admin client (`lib/supabase/admin.ts`). Once the Server Action verifies identity, checks role permissions (`requireRole`), and validates inputs, it executes the write as a trusted process. This architectural separation guarantees that public clients have **zero direct write access** to any table (especially the append-only audit log).
 
