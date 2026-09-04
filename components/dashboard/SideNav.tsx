@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -66,6 +67,11 @@ interface SideNavProps {
 
 export function SideNav({ role = 'front_desk' }: SideNavProps) {
   const pathname = usePathname();
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNavigatingTo(null);
+  }, [pathname]);
 
   const visibleLinks = NAV_LINKS.filter((link) => {
     if (role === 'provider') {
@@ -77,24 +83,41 @@ export function SideNav({ role = 'front_desk' }: SideNavProps) {
   return (
     <nav className="flex-1 p-3 space-y-0.5">
       {visibleLinks.map((link) => {
-        const active =
+        const isCurrent =
           link.href === '/'
             ? pathname === '/'
             : pathname === link.href || pathname.startsWith(`${link.href}/`);
+        const isPending = navigatingTo === link.href && !isCurrent;
+        const active = isCurrent || isPending;
+
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-100 group ${
+            prefetch={true}
+            onClick={() => {
+              if (link.href !== pathname) {
+                setNavigatingTo(link.href);
+              }
+            }}
+            className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 group cursor-pointer ${
               active
-                ? 'bg-[#111111] text-white'
+                ? isPending
+                  ? 'bg-[#111111]/85 text-white shadow-xs'
+                  : 'bg-[#111111] text-white shadow-xs'
                 : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111111]'
             }`}
           >
-            <span className={`${active ? 'text-white' : 'text-[#9ca3af] group-hover:text-[#374151]'} transition-colors`}>
-              {link.icon}
-            </span>
-            {link.label}
+            <div className="flex items-center gap-2.5">
+              <span className={`${active ? 'text-white' : 'text-[#9ca3af] group-hover:text-[#374151]'} transition-colors`}>
+                {link.icon}
+              </span>
+              <span>{link.label}</span>
+            </div>
+
+            {isPending && (
+              <span className="h-2.5 w-2.5 rounded-full border-2 border-white/30 border-t-white animate-spin shrink-0" />
+            )}
           </Link>
         );
       })}

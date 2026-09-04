@@ -35,6 +35,12 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  // If no Supabase auth cookie exists, skip remote auth call to avoid latency
+  const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith('sb-'));
+  if (!hasAuthCookie) {
+    return supabaseResponse;
+  }
+
   // Refreshes the session if it is expired (no-op otherwise).
   await supabase.auth.getUser();
 

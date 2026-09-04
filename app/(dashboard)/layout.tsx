@@ -1,6 +1,8 @@
+import { Suspense } from 'react';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { signOutAction } from '@/lib/auth/actions';
 import { SideNav } from '@/components/dashboard/SideNav';
+import { NavigationProgress } from '@/components/ui/NavigationProgress';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +31,9 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-[#fafafa]">
+      <Suspense fallback={null}>
+        <NavigationProgress />
+      </Suspense>
       {/* Sidebar */}
       <aside className="flex w-60 shrink-0 flex-col border-r border-[#e5e7eb] bg-white fixed inset-y-0 left-0 z-20">
         {/* Logo / Brand */}

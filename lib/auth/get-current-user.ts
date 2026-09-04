@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Profile } from '@/lib/db/types';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
@@ -8,7 +9,13 @@ export interface CurrentUser {
   profile: Profile;
 }
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+/**
+ * Deduplicated per-request authentication resolver.
+ * Wrapping in React cache() ensures that layout.tsx and page.tsx
+ * in the same request cycle do not perform redundant Supabase Auth
+ * and Prisma database lookups, slashing first-load TTFB.
+ */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const supabase = await createServerSupabaseClient();
 
   const {
@@ -30,9 +37,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       id: profile.id,
       email: profile.email,
       full_name: profile.fullName,
-      role: profile.role as any,
+      role: profile.role as Profile['role'],
       created_at: profile.createdAt.toISOString(),
       updated_at: profile.updatedAt.toISOString(),
     },
   };
-}
+});

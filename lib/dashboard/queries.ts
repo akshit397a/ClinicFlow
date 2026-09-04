@@ -1,8 +1,21 @@
 import { addDays, startOfWeek, subMonths, format } from 'date-fns';
+import { unstable_cache } from 'next/cache';
 import type { AppointmentListItem } from '@/lib/db/types';
 import { prisma } from '@/lib/prisma';
 import { countUnconfirmedAlerts } from '@/lib/alerts/queries';
 import { startOfDayLocal } from '@/lib/utils/dates';
+
+const getCachedClinicStats = unstable_cache(
+  async () => {
+    const [totalPatients, activeProviders] = await Promise.all([
+      prisma.patient.count(),
+      prisma.profile.count({ where: { role: 'provider' } }),
+    ]);
+    return { totalPatients, activeProviders };
+  },
+  ['clinic-core-patient-provider-counts'],
+  { revalidate: 300, tags: ['patients', 'providers'] }
+);
 
 export interface NoShowWeek {
   weekStart: string;
@@ -164,8 +177,7 @@ export async function getDashboardMetrics(options?: {
     unconfirmedAlertsCount,
     totalCount,
     lastMonthCount,
-    totalPatientsCount,
-    activeProvidersCount,
+    clinicStats,
   ] = await Promise.all([
     countUnconfirmedAlerts(),
     prisma.appointment.count({
@@ -181,9 +193,11 @@ export async function getDashboardMetrics(options?: {
         ...providerFilter,
       },
     }),
-    prisma.patient.count(),
-    prisma.profile.count({ where: { role: 'provider' } }),
+    getCachedClinicStats(),
   ]);
+
+  const totalPatientsCount = clinicStats.totalPatients;
+  const activeProvidersCount = clinicStats.activeProviders;
 
   const todayByStatus: Record<string, number> = {};
   let todayCheckedInCount = 0;
