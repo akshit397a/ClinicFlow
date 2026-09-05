@@ -1,8 +1,5 @@
 # Engineering Plan & Build Log: ClinicFlow
 
-> **Developer Perspective & Build Retrospective**  
-> As the full-stack developer building ClinicFlow, this document outlines how I structured the project into focused development sessions, the intentional "inside-out" sequence I built in, how my time estimates fared against reality, and the deliberate scope cuts I made to ship a rock-solid, production-grade scheduling engine.
-
 ---
 
 ## 1. How the Work Was Broken into Sessions
