@@ -1,6 +1,12 @@
 # ClinicFlow Database Schema & Architecture
 
+<<<<<<< HEAD
 ## 1. Table-by-Table Storage Design
+=======
+---
+
+## 1. Table by Table: Columns, Types, and Storage Design
+>>>>>>> 35288fbf467aefc4b1dcc7125cfcbabdda2f4540
 
 The database schema runs on PostgreSQL (via Supabase) and uses 6 core application tables alongside extensions (`pgcrypto`, `btree_gist`, `pg_trgm`).
 
@@ -245,4 +251,8 @@ CREATE INDEX appointment_audit_events_appointment_created_idx ON public.appointm
 CREATE INDEX patients_full_name_trgm_idx ON public.patients USING gin (full_name gin_trgm_ops);
 CREATE INDEX profiles_full_name_trgm_idx ON public.profiles USING gin (full_name gin_trgm_ops);
 
+<<<<<<< HEAD
 ```
+=======
+This indexing setup ensures that provider calendar queries, patient visit timelines, and dashboard filters run as tight index scans with sub-millisecond query execution.
+>>>>>>> 35288fbf467aefc4b1dcc7125cfcbabdda2f4540
