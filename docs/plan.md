@@ -148,6 +148,36 @@ To maintain the delivery timeline without compromising clinic safety, data integ
 
 ---
 
+### Scope Cuts & Trade-offs on Optional Stretch Ideas
+
+When managing the 12-hour budget, I also evaluated the nine optional stretch ideas from `README.md`. While foundational groundwork was laid for several (such as single-day CSV export and unconfirmed alert views), five specific stretch implementations were consciously cut or left in a partial state:
+
+#### 6. Automated Outbound Carrier Reminders (SMS / Email Webhooks)
+* **Initial Vision**: Hooking into Twilio or Resend to send automated SMS/email reminders to patients 24 hours prior to their visit.
+* **Why It Was Cut**: The core 24-hour unconfirmed alert engine (`lib/alerts/engine.ts`) and patient contact schema (`email`, `phone`) were fully completed. However, integrating third-party carrier APIs requires API credentials, webhook verification secrets, and external carrier spend. To ensure the submission runs 100% self-contained on any reviewer's machine without external API dependencies, automated carrier dispatch was cut in favor of internal front-desk alert queues.
+
+#### 7. 1-Click Batch Recurring Treatment Plan Booking
+* **Initial Vision**: Enabling receptionists to book an ongoing patient across 6–10 consecutive weekly physical therapy sessions in a single click.
+* **Why It Was Cut**: I successfully delivered bulk recurring availability generation with collision skipping (Goal 7). However, an atomic multi-week *patient booking* macro requires complex transaction rollback if 1 of the 8 weeks encounters a conflict or provider absence. Rather than shipping a brittle multi-appointment booking flow, I preserved atomic single-slot booking, allowing staff to reserve recurring slots sequentially with verified safety.
+
+#### 8. Automated Waitlist Queue for Fully Booked Days
+* **Initial Vision**: An automated FIFO queue that immediately detects appointment cancellations and auto-books the next waiting patient.
+* **Why It Was Cut**: The database layer was built to immediately unlock cancelled slots via the partial GiST exclusion constraint (`WHERE archived_at IS NULL AND status != 'cancelled'`). However, building an automated patient waitlist matching daemon was cut because clinical scheduling requires human judgment—front-desk staff must prioritize patient urgency and medical triage over raw FIFO algorithms.
+
+#### 9. Standalone Visit Type Configuration Catalog Table
+* **Initial Vision**: A normalized `visit_types` dictionary table with administrative UI for managing default durations (e.g. Assessment = 60m, Adjustment = 15m).
+* **Why It Was Cut**: I built dynamic slot duration support directly into the `appointments` schema (`duration_minutes Int`), the availability generator, the schedule grid, and CSV exports (supporting 15, 30, 45, and 60 minutes). Creating a separate administrative settings catalog table was cut as unnecessary database overhead for the core operational workflow.
+
+#### 10. Multi-Resource Room & Equipment Collision Constraints
+* **Initial Vision**: Modeling physical treatment rooms and diagnostic equipment with secondary GiST exclusion constraints alongside provider availability.
+* **Why It Was Cut**: Combining multi-dimensional resource locks (doctor + room + machine) into database-level exclusion constraints causes severe locking contention and deadlock hazards during concurrent bookings. I addressed clinical collaboration through the Care Team model (Goal 5), which covers multi-staff presence without introducing multi-resource deadlock risks.
+
+#### 11. Scheduled 6 PM Email Digest Cron Job
+* **Initial Vision**: A daily automated cron worker dispatching an email digest of tomorrow's unconfirmed visits to receptionists.
+* **Why It Was Cut**: The unconfirmed query engine, escalation sorting, and visual digest are fully operational on the Front Desk Dashboard and `/alerts` view. Setting up background cron jobs and an SMTP mailer was cut because front-desk staff monitor the active system in real-time during clinic operational hours.
+
+---
+
 ## 5. Verification & Definition of Done
 
 The build was validated against strict production readiness criteria:

@@ -73,12 +73,15 @@ The trickiest part was fine-tuning the PostgreSQL exclusion constraint with part
 
 ## What would you do next, with another 12 hours?
 
-1. **Automated Patient SMS/Email Reminders (Twilio/Resend):** Send 1-click confirmation links 24h in advance so patients self-confirm on their phones, clearing the front desk's alert queue automatically.
-2. **Cancellation Auto-Fill / Waitlist:** When a patient cancels, instantly suggest the next waiting patient for that doctor to keep clinic chairs filled.
-3. **Drag-and-Drop Calendar Rescheduling:** Keep the current modal safety, but add quick drag-and-drop on desktop to help receptionists shuffle schedules during the morning rush.
-4. **Audit Log Partitioning:** Partition `appointment_audit_events` by month in PostgreSQL to keep queries snappy as records hit hundreds of thousands.
+1. **Automated Patient SMS/Email Reminders & Self-Confirmation (Stretch #1 & #9):** Hook our 24-hour unconfirmed query engine into Twilio and Resend webhooks so patients receive SMS/email confirmation links 24 hours prior to visits. Patient clicks would automatically confirm the appointment and dismiss front-desk alert badges, paired with a daily 6 PM cron emailing tomorrow's unconfirmed summary to the front desk.
+2. **Cancellation Auto-Fill & Patient Waitlist Queue (Stretch #4):** Build a dedicated FIFO waitlist queue that hooks into appointment cancellations (which already unlock time slots via our partial GiST index), allowing receptionists to backfill open chairs in one click.
+3. **1-Click Batch Recurring Treatment Plan Booking (Stretch #2):** Extend our bulk recurring availability generator into a patient treatment-plan booking wizard, reserving a series of 6–10 consecutive weekly visits in a single atomic database transaction.
+4. **Configurable Visit-Type Catalog & Durations (Stretch #5):** Abstract our dynamic slot durations (15/30/45/60m) into a clinic admin dictionary table mapping clinical visit types (Initial Assessment, Routine Follow-up, Injection) to default durations and billing codes.
+5. **Physical Room & Equipment Scheduling Constraints (Stretch #6):** Model physical examination rooms and specialized machines with secondary GiST exclusion constraints alongside the Care Team model to prevent room double-booking.
+6. **Audit Log Partitioning & Transactional RPC Atomicity:** Partition `appointment_audit_events` by month in PostgreSQL and consolidate the two-step mutation/audit write into a single native database transaction RPC.
 
 ## What are you least happy with in this codebase, and why?
 
 1. **Two-Step Audit Logging:** Right now, the mutation runs first and the audit entry is appended in a second call because the Supabase JS client doesn't support multi-statement transactions out of the box. While errors are logged, it's not strictly atomic—in a true enterprise clinical system, I'd wrap both in a single database-level transaction (`BEGIN ... COMMIT`) via a custom RPC function.
 2. **Prisma + Supabase Duplication:** We started with Prisma types and then moved to native SQL migrations to leverage PostgreSQL's GiST exclusion constraints and trigram indexes. Having both works fine, but it adds minor maintenance overhead. If starting fresh, I’d stick 100% to a single type-safe query builder like Kysely.
+3. **Incomplete Carrier Hooks for Stretch Reminders:** While we built the complete mathematical unconfirmed alert engine, single-day CSV export, dynamic durations, and care team collaboration, we chose not to wire up external paid carrier APIs (Twilio SMS, Resend SMTP) or complex multi-week patient booking macros to keep the submission 100% self-contained, zero-dependency, and instantly runnable for review. In a commercial deployment, having automated outbound patient SMS confirmation would significantly reduce front-desk phone calls.

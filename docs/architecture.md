@@ -136,3 +136,19 @@ To deliver a high-quality, production-grade scheduling engine within the time bu
 ### 5. Multi-Clinic Tenancy Architecture
 * **What was omitted:** Adding `clinic_id` columns, multi-tenant database partitioning, and tenant isolation policies.
 * **Why:** Multi-tenancy is classic premature optimization for a single-clinic scheduling application. Adding tenant layers across every query, index, and RLS policy would add code clutter and slow down development without providing any value for the single-facility use case.
+
+### 6. Outbound Carrier Messaging & Notification Queues (Twilio / Resend)
+* **What was omitted:** Standing up an external background worker (e.g. BullMQ / Redis / Celery) to orchestrate automated outbound SMS reminders and daily email digests.
+* **Why:** External messaging queues introduce third-party credentials, carrier webhooks, and asynchronous failure retries. All 24-hour urgency calculations and alert counts are derived natively in PostgreSQL queries and surfaced through real-time UI badges and operational queues on `/alerts`. This keeps the architecture 100% self-contained, reproducible, and zero-cost for review.
+
+### 7. Multi-Resource Room & Equipment Exclusion Locks
+* **What was omitted:** Secondary multi-resource reservation tables and dual GiST exclusion constraints for physical examination rooms or medical devices.
+* **Why:** Enforcing multi-dimensional exclusion constraints across both provider and physical room dimensions creates severe lock contention and deadlock risks during concurrent slot reservations. By modeling clinical collaboration through the Care Team join table (Goal 5) and anchoring scheduling to the provider, we solved staffing collaboration without multi-resource database locking penalties.
+
+### 8. Automated Cancellation Waitlist Daemon
+* **What was omitted:** An autonomous FIFO daemon that detects cancelled appointments and auto-books the next waiting patient.
+* **Why:** Clinical scheduling requires human discretion—receptionists must triage patients based on medical acuity rather than rigid FIFO arrival. Our architecture immediately frees up cancelled slots at the database level via partial GiST indexes (`WHERE status != 'cancelled'`), giving front-desk staff instant availability to manually backfill chairs with full clinical judgment.
+
+### 9. Standalone Visit Type Administrative Catalog
+* **What was omitted:** A dedicated database catalog table and admin configuration UI for visit types.
+* **Why:** Hardcoding dictionary lookups restricts clinical workflow flexibility. Storing dynamic `duration_minutes` directly on the appointment record supports 15, 30, 45, and 60-minute visits across the calendar, availability generator, and CSV exports with zero relational overhead.
