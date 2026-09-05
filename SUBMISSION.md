@@ -45,6 +45,21 @@ Mark each honestly. Partial is fine — say what is partial.
 | 9 | History you cannot rewrite | Done | Every single status flip, care team change, cancellation reason, and note creation logs to an append-only audit trail. Database RLS rules block all client updates and deletes, so not even front desk staff can erase past events. |
 | 10 | Unconfirmed alerts | Done | Any appointment left in Requested status within 24 hours of start triggers an alert badge for front desk staff. Staff can dismiss it, but if it's still unconfirmed 1 hour before start, it automatically pops back up so nobody slips through the cracks. |
 
+### Stretch ideas checklist (optional)
+
+| # | Stretch Idea | Status | Notes |
+|---|--------------|--------|-------|
+| S1 | Automated reminder messages before an appointment | Partial | The 24-hour urgent unconfirmed alert detection engine is fully operational in `lib/alerts/engine.ts`, and patient records capture contact details (`phone`, `email`). Outbound SMS/email webhook dispatch (e.g. Twilio/Resend) was intentionally left unhooked to avoid external carrier API key dependencies during take-home evaluation. |
+| S2 | Recurring appointments for ongoing treatment plans | Partial | Implemented multi-week recurring availability generation across custom date ranges with automated overlap collision skipping (`lib/availability/generation.ts`). Patients can be scheduled into any recurring slot series via the calendar; a 1-click batch multi-week patient booking macro was left for the next phase. |
+| S3 | A patient-facing self-service booking view | Scoped out | Evaluated during initial architecture and intentionally omitted. The specification strictly designates clinic staff (receptionists and providers) as the system users; introducing unauthenticated public booking would compromise clinical triage safety, slot reservation locks, and provider schedule control. |
+| S4 | A waitlist for fully booked days | Scoped out | When an appointment is cancelled, the partial GiST exclusion index immediately frees up the provider's slot for rebooking. However, an automated FIFO waitlist queue with automatic patient notification was prioritized behind the 10 core deliverables. |
+| S5 | Per-visit-type default durations | Partial | The database schema (`duration_minutes`), slot controls, and bulk generator dynamically support variable durations (15, 30, 45, and 60 minutes) per appointment, which render cleanly on the schedule grid and CSV export. A standalone administrative "Visit Types" dictionary table was not normalized. |
+| S6 | Room or equipment assignment alongside provider | Scoped out | The operational dashboard tracks clinic-wide room queues, and the multi-provider Care Team feature (`appointment_supporting_providers`) handles multi-staff presence per visit. Physical room/equipment collision tables were omitted to keep the relational model clean. |
+| S7 | A printable day sheet for the front desk | Done | Built a dedicated single-day chronological schedule view on `/schedule` showing exact patient times, provider badges, and statuses, paired with a 1-click single-day RFC-4180 CSV export (`/api/schedules/csv`) capturing date, start/end, duration, provider, patient, and status for physical printing and morning desk rostering. |
+| S8 | Billing notes per visit | Done | Implemented the Visit Notes drawer (`visit_notes`) on every appointment, allowing providers to record free-text clinical and billing/CPT documentation with author lockdown, edit indicator badges, and immutable audit events (`NOTE_ADDED`, `NOTE_EDITED`). A separate isolated billing-only ledger was not partitioned. |
+| S9 | An email digest of tomorrow's unconfirmed appointments | Partial | The 24-hour unconfirmed query engine, escalation sorting, and visual digest are fully operational on the Front Desk Dashboard and `/alerts` page with active count badges. Automated daily SMTP cron delivery at 6 PM was deferred to avoid external mail server credentials. |
+
+
 ## How much time did you actually spend?
 
 Around **13 hours total**, split across focused sessions over the week:
