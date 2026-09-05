@@ -6,8 +6,6 @@ Include at least one prompt that produced something wrong, and what you did abou
 
 If you did not use AI at all, say so here, and describe your process instead.
 
----
-
 ## 1. Concurrency-Safe Schema & GiST Overlap Constraints
 
 ### Prompt
