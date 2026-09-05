@@ -1,8 +1,5 @@
 # ClinicFlow Database Schema & Architecture
 
-> **Developer Perspective & Design Rationale**  
-> As the full-stack developer building ClinicFlow, this document breaks down the database architecture, entity relationships, constraint boundaries, intentional denormalizations, and scale bottlenecks in my own words.
-
 ---
 
 ## 1. Table by Table: Columns, Types, and Storage Design
